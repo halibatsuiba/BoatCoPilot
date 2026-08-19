@@ -61,6 +61,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
     .scene::after { transform: rotate(12deg); }
     svg { width: min(72%, 330px); position: relative; z-index: 1; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--ink);
+      font: 700 .72rem monospace;
+      letter-spacing: .1em;
+      cursor: pointer;
+    }
+    .zero-button {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      z-index: 2;
+      padding: 8px 12px;
+      transform: translateX(-50%);
+      color: #f1c84b;
+      background: #14221e;
+    }
+    .zero-button:hover { background: #2d4b40; }
+    .stop-button {
+      width: 100%;
+      margin-top: 18px;
+      padding: 13px;
+      border-color: #b34d47;
+      color: #fff1ef;
+      background: #8f332f;
+    }
+    .stop-button:hover { background: #b34d47; }
     .hull { fill: #b7c9c0; stroke: #e8f1ed; stroke-width: 3; }
     .deck { fill: #38564b; stroke: #8da99c; stroke-width: 2; }
     .keel { fill: #1a3029; stroke: #8da99c; stroke-width: 2; }
@@ -156,6 +184,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <main>
     <header><h1>Steering monitor</h1><span class="status">● online</span></header>
     <section class="scene" aria-label="Boat steering direction">
+      <button id="zero" class="zero-button" type="button">ZERO</button>
       <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
         <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
         <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
@@ -172,6 +201,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </section>
     <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
     <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
+    <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
+    <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
+    <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
+    <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
+    <button id="stop" class="stop-button" type="button">STOP</button>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
       <div class="throttle-control">
@@ -186,7 +220,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const arrow = document.getElementById('arrow');
     const targetArrow = document.getElementById('target-arrow');
     const control = document.getElementById('steering-control');
+    const zero = document.getElementById('zero');
+    const stop = document.getElementById('stop');
     const heading = document.getElementById('heading');
+    const gpsStatus = document.getElementById('gps-status');
+    const satellites = document.getElementById('satellites');
+    const latitude = document.getElementById('latitude');
+    const longitude = document.getElementById('longitude');
     const throttle = document.getElementById('throttle');
     const throttleValue = document.getElementById('throttle-value');
     let currentAngle = 0;
@@ -215,6 +255,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         targetArrow.style.transform = `rotate(${roundedAngle(targetAngle)}deg)`;
       }
     }
+
+    zero.addEventListener('click', async () => {
+      targetAngle = 0;
+      drawTarget();
+      await fetch('/api/target?angle=0');
+    });
+
+    stop.addEventListener('click', async () => {
+      showThrottle(0);
+      await fetch('/api/stop');
+    });
 
     control.addEventListener('pointerdown', (event) => {
       dragging = true;
@@ -249,6 +300,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
         angle.textContent = `${roundedAngle(data.angle)}°`;
         heading.textContent = `${roundedAngle(data.heading)}°`;
+        gpsStatus.textContent = data.gpsStatus;
+        satellites.textContent = data.satellites;
+        latitude.textContent = data.latitude === null ? '--' : data.latitude.toFixed(6);
+        longitude.textContent = data.longitude === null ? '--' : data.longitude.toFixed(6);
         arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
       } catch (_) {}
@@ -273,7 +328,24 @@ void serveSteering() {
   String response = "{\"angle\":" +
                     String(activeDashboard->steeringAngleDegrees(), 4) +
                     ",\"heading\":" +
-                    String(activeDashboard->headingDegrees(), 4) + "}";
+                    String(activeDashboard->headingDegrees(), 4) +
+                    ",\"gpsStatus\":\"" +
+                    (activeDashboard->gpsHasFix() ? "FIX" : "NO FIX") +
+                    "\",\"satellites\":" +
+                    String(activeDashboard->gpsSatellites()) +
+                    ",\"latitude\":";
+  if (activeDashboard->gpsHasFix()) {
+    response += String(activeDashboard->gpsLatitude(), 6);
+  } else {
+    response += "null";
+  }
+  response += ",\"longitude\":";
+  if (activeDashboard->gpsHasFix()) {
+    response += String(activeDashboard->gpsLongitude(), 6);
+  } else {
+    response += "null";
+  }
+  response += "}";
   server.send(200, "application/json", response);
 }
 }  // namespace
@@ -291,6 +363,7 @@ void WebDashboard::begin(uint16_t port) {
 
     targetAngleDegrees_ = server.arg("angle").toFloat();
     targetRequested_ = true;
+    stopRequested_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/throttle", HTTP_GET, [this]() {
@@ -300,6 +373,12 @@ void WebDashboard::begin(uint16_t port) {
     }
 
     throttlePercent_ = constrain(server.arg("percent").toInt(), -100, 100);
+    stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/stop", HTTP_GET, [this]() {
+    throttlePercent_ = 0;
+    stopRequested_ = true;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.begin();
@@ -315,4 +394,12 @@ void WebDashboard::setSteeringAngle(float angleDegrees) {
 
 void WebDashboard::setHeading(float headingDegrees) {
   headingDegrees_ = headingDegrees;
+}
+
+void WebDashboard::setGpsData(bool hasFix, uint32_t satellites, double latitude,
+                              double longitude) {
+  gpsHasFix_ = hasFix;
+  gpsSatellites_ = satellites;
+  gpsLatitude_ = latitude;
+  gpsLongitude_ = longitude;
 }

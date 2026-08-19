@@ -7,6 +7,7 @@
 #include "Config.h"
 #include "CytronMotor.h"
 #include "EscThrottle.h"
+#include "GpsSensor.h"
 #include "WiFiConnection.h"
 #include "WebDashboard.h"
 
@@ -18,6 +19,7 @@ constexpr float STEERING_TARGET_TOLERANCE_DEGREES = 1.0f;
 
 AS5600Sensor steeringSensor;
 BNO085Sensor headingSensor;
+GpsSensor gpsSensor;
 CytronMotor steeringMotor;
 EscThrottle throttle;
 WiFiConnection wifiConnection;
@@ -44,6 +46,8 @@ void setup() {
   } else {
     Serial.println("BNO085 heading sensor not found");
   }
+  gpsSensor.begin(GPS_RX_PIN, GPS_TX_PIN, GPS_BAUDRATE);
+  Serial.println("NEO-M8N GPS started");
   throttle.begin(THROTTLE_ESC_PIN, ESC_PWM_FREQUENCY, ESC_PWM_RESOLUTION,
                  ESC_REVERSE_US, ESC_NEUTRAL_US, ESC_FORWARD_US,
                  ESC_ARM_TIME_MS);
@@ -63,17 +67,30 @@ void loop() {
   static uint32_t lastPrintTime = 0;
 
   webDashboard.handleClient();
-  throttle.setPercent(webDashboard.throttlePercent());
+  if (webDashboard.stopRequested()) {
+    throttle.setPercent(0);
+  } else {
+    throttle.setPercent(webDashboard.throttlePercent());
+  }
+  gpsSensor.update();
+  webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
+                          gpsSensor.latitude(), gpsSensor.longitude());
 
   if (headingSensor.update()) {
     webDashboard.setHeading(headingSensor.headingDegrees());
+  }
+
+  if (webDashboard.stopRequested()) {
+    steeringMotor.stop();
   }
 
   if (steeringSensor.update()) {
     const float currentAngle = steeringSensor.steeringAngleDegrees();
     webDashboard.setSteeringAngle(currentAngle);
 
-    if (webDashboard.targetRequested()) {
+    if (webDashboard.stopRequested()) {
+      steeringMotor.stop();
+    } else if (webDashboard.targetRequested()) {
       const float targetAngle = webDashboard.targetAngleDegrees();
       const float angleError = targetAngle - currentAngle;
 
