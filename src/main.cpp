@@ -67,7 +67,7 @@ void loop() {
   static uint32_t lastPrintTime = 0;
 
   webDashboard.handleClient();
-  if (webDashboard.stopRequested()) {
+  if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
     throttle.setPercent(0);
   } else {
     throttle.setPercent(webDashboard.throttlePercent());
@@ -80,7 +80,7 @@ void loop() {
     webDashboard.setHeading(headingSensor.headingDegrees());
   }
 
-  if (webDashboard.stopRequested()) {
+  if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
     steeringMotor.stop();
   }
 
@@ -88,7 +88,7 @@ void loop() {
     const float currentAngle = steeringSensor.steeringAngleDegrees();
     webDashboard.setSteeringAngle(currentAngle);
 
-    if (webDashboard.stopRequested()) {
+    if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
       steeringMotor.stop();
     } else if (webDashboard.targetRequested()) {
       const float targetAngle = webDashboard.targetAngleDegrees();

@@ -80,8 +80,8 @@ constexpr int MOTOR_DEADBAND = 10;
 // Safety
 //==================================================
 
-//constexpr uint32_t COMMAND_TIMEOUT_MS = 1000;
 constexpr uint32_t COMMAND_TIMEOUT_MS = 600000;   // 10 minutes
+constexpr uint32_t WEB_CLIENT_TIMEOUT_MS = 1000;
 
 //==================================================
 // Scheduler

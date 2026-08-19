@@ -1,5 +1,6 @@
 #include "WebDashboard.h"
 
+#include "Config.h"
 #include <WebServer.h>
 
 namespace {
@@ -12,7 +13,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Steering Monitor</title>
+  <title>Taktinen vetolaite</title>
   <style>
     :root {
       color-scheme: dark;
@@ -182,7 +183,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <main>
-    <header><h1>Steering monitor</h1><span class="status">● online</span></header>
+    <header><h1>Taktinen vetolaite</h1><span class="status">● online</span></header>
     <section class="scene" aria-label="Boat steering direction">
       <button id="zero" class="zero-button" type="button">ZERO</button>
       <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
@@ -325,6 +326,7 @@ void serveSteering() {
     return;
   }
 
+  activeDashboard->recordClientHeartbeat();
   String response = "{\"angle\":" +
                     String(activeDashboard->steeringAngleDegrees(), 4) +
                     ",\"heading\":" +
@@ -386,6 +388,15 @@ void WebDashboard::begin(uint16_t port) {
 
 void WebDashboard::handleClient() {
   server.handleClient();
+}
+
+bool WebDashboard::webClientConnected() const {
+  return lastClientHeartbeatMs_ != 0 &&
+         millis() - lastClientHeartbeatMs_ <= WEB_CLIENT_TIMEOUT_MS;
+}
+
+void WebDashboard::recordClientHeartbeat() {
+  lastClientHeartbeatMs_ = millis();
 }
 
 void WebDashboard::setSteeringAngle(float angleDegrees) {

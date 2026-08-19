@@ -11,7 +11,9 @@ class WebDashboard {
   void setHeading(float headingDegrees);
   void setGpsData(bool hasFix, uint32_t satellites, double latitude,
                   double longitude);
+  void recordClientHeartbeat();
   bool stopRequested() const { return stopRequested_; }
+  bool webClientConnected() const;
   float steeringAngleDegrees() const { return steeringAngleDegrees_; }
   float headingDegrees() const { return headingDegrees_; }
   bool gpsHasFix() const { return gpsHasFix_; }
@@ -30,6 +32,7 @@ class WebDashboard {
   double gpsLatitude_ = 0.0;
   double gpsLongitude_ = 0.0;
   bool stopRequested_ = false;
+  uint32_t lastClientHeartbeatMs_ = 0;
   float targetAngleDegrees_ = 0.0f;
   bool targetRequested_ = false;
   int throttlePercent_ = 0;
