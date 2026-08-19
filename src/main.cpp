@@ -3,6 +3,7 @@
 #include <WiFi.h>
 
 #include "AS5600Sensor.h"
+#include "BNO085Sensor.h"
 #include "Config.h"
 #include "CytronMotor.h"
 #include "EscThrottle.h"
@@ -16,6 +17,7 @@ constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr float STEERING_TARGET_TOLERANCE_DEGREES = 1.0f;
 
 AS5600Sensor steeringSensor;
+BNO085Sensor headingSensor;
 CytronMotor steeringMotor;
 EscThrottle throttle;
 WiFiConnection wifiConnection;
@@ -36,6 +38,12 @@ void setup() {
   }
 
   steeringSensor.begin(AS5600_SDA_PIN, AS5600_SCL_PIN);
+  if (headingSensor.begin(BNO085_SDA_PIN, BNO085_SCL_PIN,
+                          BNO085_I2C_ADDRESS)) {
+    Serial.println("BNO085 heading sensor started");
+  } else {
+    Serial.println("BNO085 heading sensor not found");
+  }
   throttle.begin(THROTTLE_ESC_PIN, ESC_PWM_FREQUENCY, ESC_PWM_RESOLUTION,
                  ESC_REVERSE_US, ESC_NEUTRAL_US, ESC_FORWARD_US,
                  ESC_ARM_TIME_MS);
@@ -56,6 +64,10 @@ void loop() {
 
   webDashboard.handleClient();
   throttle.setPercent(webDashboard.throttlePercent());
+
+  if (headingSensor.update()) {
+    webDashboard.setHeading(headingSensor.headingDegrees());
+  }
 
   if (steeringSensor.update()) {
     const float currentAngle = steeringSensor.steeringAngleDegrees();

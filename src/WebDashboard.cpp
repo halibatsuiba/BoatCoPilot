@@ -171,6 +171,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </svg>
     </section>
     <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
+    <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
       <div class="throttle-control">
@@ -185,6 +186,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const arrow = document.getElementById('arrow');
     const targetArrow = document.getElementById('target-arrow');
     const control = document.getElementById('steering-control');
+    const heading = document.getElementById('heading');
     const throttle = document.getElementById('throttle');
     const throttleValue = document.getElementById('throttle-value');
     let currentAngle = 0;
@@ -246,6 +248,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           targetAngle = currentAngle;
         }
         angle.textContent = `${roundedAngle(data.angle)}°`;
+        heading.textContent = `${roundedAngle(data.heading)}°`;
         arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
       } catch (_) {}
@@ -268,7 +271,9 @@ void serveSteering() {
   }
 
   String response = "{\"angle\":" +
-                    String(activeDashboard->steeringAngleDegrees(), 4) + "}";
+                    String(activeDashboard->steeringAngleDegrees(), 4) +
+                    ",\"heading\":" +
+                    String(activeDashboard->headingDegrees(), 4) + "}";
   server.send(200, "application/json", response);
 }
 }  // namespace
@@ -306,4 +311,8 @@ void WebDashboard::handleClient() {
 
 void WebDashboard::setSteeringAngle(float angleDegrees) {
   steeringAngleDegrees_ = angleDegrees;
+}
+
+void WebDashboard::setHeading(float headingDegrees) {
+  headingDegrees_ = headingDegrees;
 }
