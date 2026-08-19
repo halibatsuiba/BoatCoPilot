@@ -76,7 +76,79 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .throttle { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
     .throttle-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
     #throttle-value { color: #f1c84b; font: 700 1.5rem monospace; }
-    #throttle { width: 100%; margin-top: 14px; accent-color: #f1c84b; }
+    .throttle-control {
+      position: relative;
+      width: min(100%, 180px);
+      height: 260px;
+      margin: 18px auto 0;
+      padding: 18px 0;
+      display: grid;
+      place-items: center;
+      border: 2px solid #52675e;
+      border-radius: 8px;
+      background: linear-gradient(90deg, #0d1d18, #20382f 48%, #0d1d18);
+      box-shadow: inset 0 0 0 5px #101d19, inset 0 0 18px rgba(0, 0, 0, .55);
+    }
+    .throttle-control::before, .throttle-control::after {
+      position: absolute;
+      left: 12px;
+      color: var(--muted);
+      font: 700 .65rem monospace;
+      letter-spacing: .08em;
+    }
+    .throttle-control::before { content: "FWD"; top: 8px; }
+    .throttle-control::after { content: "REV"; bottom: 8px; }
+    #throttle {
+      width: 220px;
+      height: 42px;
+      margin: 0;
+      transform: rotate(-90deg);
+      appearance: none;
+      background: transparent;
+      cursor: ns-resize;
+    }
+    #throttle::-webkit-slider-runnable-track {
+      height: 10px;
+      border: 1px solid #668075;
+      border-radius: 5px;
+      background: linear-gradient(90deg, #a94b45 0 49%, #52675e 49% 51%, #54e38e 51%);
+    }
+    #throttle::-webkit-slider-thumb {
+      width: 54px;
+      height: 30px;
+      margin-top: -11px;
+      border: 2px solid #f7d66d;
+      border-radius: 5px;
+      background: #d6a928;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, .5);
+      appearance: none;
+    }
+    #throttle::-moz-range-track {
+      height: 10px;
+      border: 1px solid #668075;
+      border-radius: 5px;
+      background: linear-gradient(90deg, #a94b45 0 49%, #52675e 49% 51%, #54e38e 51%);
+    }
+    #throttle::-moz-range-thumb {
+      width: 54px;
+      height: 30px;
+      border: 2px solid #f7d66d;
+      border-radius: 5px;
+      background: #d6a928;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, .5);
+    }
+    .throttle-scale {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 224px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font: .62rem monospace;
+    }
     .note { margin: 12px 0 0; color: var(--muted); font: .78rem monospace; }
   </style>
 </head>
@@ -98,10 +170,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </g>
       </svg>
     </section>
-    <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0.0000°</strong></div>
+    <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
-      <input id="throttle" type="range" min="-100" max="100" value="0" step="1" aria-label="Throttle">
+      <div class="throttle-control">
+        <input id="throttle" type="range" min="-100" max="100" value="0" step="1" aria-label="Throttle">
+        <div class="throttle-scale" aria-hidden="true"><span>100</span><span>50</span><span>N</span><span>50</span><span>100</span></div>
+      </div>
     </section>
     <p class="note">Live AS5600 position · updates every 100 ms</p>
   </main>
@@ -121,6 +196,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       throttleValue.textContent = `${value}%`;
     }
 
+    function roundedAngle(value) {
+      return Math.round(value);
+    }
+
     throttle.addEventListener('input', () => {
       showThrottle(throttle.value);
     });
@@ -131,7 +210,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     function drawTarget() {
       if (targetAngle !== null) {
-        targetArrow.style.transform = `rotate(${targetAngle}deg)`;
+        targetArrow.style.transform = `rotate(${roundedAngle(targetAngle)}deg)`;
       }
     }
 
@@ -166,8 +245,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         if (targetAngle === null) {
           targetAngle = currentAngle;
         }
-        angle.textContent = `${data.angle.toFixed(4)}°`;
-        arrow.style.transform = `rotate(${data.angle}deg)`;
+        angle.textContent = `${roundedAngle(data.angle)}°`;
+        arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
       } catch (_) {}
     }

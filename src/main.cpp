@@ -79,7 +79,7 @@ void loop() {
     const uint32_t now = millis();
     if (now - lastPrintTime >= STEERING_ANGLE_PRINT_INTERVAL_MS) {
       Serial.print("Steering axle angle: ");
-      Serial.print(currentAngle, 4);
+      Serial.print(currentAngle, 0);
       Serial.println(" deg");
       lastPrintTime = now;
     }
