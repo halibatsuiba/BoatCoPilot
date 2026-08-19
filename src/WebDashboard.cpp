@@ -1,0 +1,230 @@
+#include "WebDashboard.h"
+
+#include <WebServer.h>
+
+namespace {
+WebServer server(80);
+WebDashboard* activeDashboard = nullptr;
+
+const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Steering Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #e8f1ed;
+      --muted: #8fa39b;
+      --panel: #14221e;
+      --line: #2d4b40;
+      --water: #081714;
+      --green: #54e38e;
+      --green-dark: #1a8d55;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--ink);
+      background: radial-gradient(circle at 50% 0%, #1d3930, var(--water) 58%);
+      font-family: Georgia, serif;
+    }
+    main {
+      width: min(100%, 620px);
+      padding: 26px;
+      border: 1px solid var(--line);
+      background: rgba(20, 34, 30, .94);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
+    }
+    header { display: flex; justify-content: space-between; gap: 18px; align-items: end; }
+    h1 { margin: 0; font-size: clamp(1.7rem, 6vw, 2.7rem); font-weight: 400; letter-spacing: .02em; }
+    .status { color: var(--green); font: 700 .72rem/1.2 monospace; text-transform: uppercase; letter-spacing: .12em; }
+    .scene {
+      position: relative;
+      margin: 24px 0 18px;
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: repeating-linear-gradient(0deg, transparent 0 39px, rgba(84, 227, 142, .06) 40px), var(--water);
+    }
+    .scene::before, .scene::after {
+      content: ""; position: absolute; width: 140%; height: 1px;
+      background: rgba(84, 227, 142, .12); transform: rotate(-12deg);
+    }
+    .scene::after { transform: rotate(12deg); }
+    svg { width: min(72%, 330px); position: relative; z-index: 1; }
+    .hull { fill: #b7c9c0; stroke: #e8f1ed; stroke-width: 3; }
+    .deck { fill: #38564b; stroke: #8da99c; stroke-width: 2; }
+    .keel { fill: #1a3029; stroke: #8da99c; stroke-width: 2; }
+    #arrow { transform-origin: 150px 150px; transition: transform .15s linear; }
+    #target-arrow { transform-origin: 150px 150px; pointer-events: none; }
+    .arrow-line { stroke: var(--green); stroke-width: 9; stroke-linecap: round; }
+    .arrow-head { fill: var(--green); }
+    .target-line { stroke: #f1c84b; stroke-width: 6; stroke-linecap: round; }
+    .target-head { fill: #f1c84b; }
+    .readout { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+    .label { color: var(--muted); font: .75rem monospace; text-transform: uppercase; letter-spacing: .13em; }
+    #angle { color: var(--green); font: 700 clamp(2rem, 9vw, 3.8rem)/1 monospace; }
+    .throttle { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .throttle-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    #throttle-value { color: #f1c84b; font: 700 1.5rem monospace; }
+    #throttle { width: 100%; margin-top: 14px; accent-color: #f1c84b; }
+    .note { margin: 12px 0 0; color: var(--muted); font: .78rem monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>Steering monitor</h1><span class="status">● online</span></header>
+    <section class="scene" aria-label="Boat steering direction">
+      <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
+        <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
+        <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
+        <path class="keel" d="M111 166 H189 V222 C179 247 164 261 150 267 C136 261 121 247 111 222Z"/>
+        <g id="arrow" aria-hidden="true">
+          <line class="arrow-line" x1="150" y1="222" x2="150" y2="93"/>
+          <path class="arrow-head" d="M150 57 L126 103 H174 Z"/>
+        </g>
+        <g id="target-arrow" aria-hidden="true">
+          <line class="target-line" x1="150" y1="222" x2="150" y2="108"/>
+          <path class="target-head" d="M150 78 L132 112 H168 Z"/>
+        </g>
+      </svg>
+    </section>
+    <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0.0000°</strong></div>
+    <section class="throttle">
+      <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
+      <input id="throttle" type="range" min="-100" max="100" value="0" step="1" aria-label="Throttle">
+    </section>
+    <p class="note">Live AS5600 position · updates every 100 ms</p>
+  </main>
+  <script>
+    const angle = document.getElementById('angle');
+    const arrow = document.getElementById('arrow');
+    const targetArrow = document.getElementById('target-arrow');
+    const control = document.getElementById('steering-control');
+    const throttle = document.getElementById('throttle');
+    const throttleValue = document.getElementById('throttle-value');
+    let currentAngle = 0;
+    let targetAngle = null;
+    let dragging = false;
+
+    function showThrottle(value) {
+      throttle.value = value;
+      throttleValue.textContent = `${value}%`;
+    }
+
+    throttle.addEventListener('input', () => {
+      showThrottle(throttle.value);
+    });
+
+    throttle.addEventListener('change', async () => {
+      await fetch(`/api/throttle?percent=${encodeURIComponent(throttle.value)}`);
+    });
+
+    function drawTarget() {
+      if (targetAngle !== null) {
+        targetArrow.style.transform = `rotate(${targetAngle}deg)`;
+      }
+    }
+
+    control.addEventListener('pointerdown', (event) => {
+      dragging = true;
+      control.setPointerCapture(event.pointerId);
+    });
+
+    control.addEventListener('pointermove', (event) => {
+      if (!dragging) return;
+      const bounds = control.getBoundingClientRect();
+      const x = event.clientX - (bounds.left + bounds.width / 2);
+      const y = event.clientY - (bounds.top + bounds.height / 2);
+      const pointerAngle = Math.atan2(x, -y) * 180 / Math.PI;
+      const targetOffset = Math.max(-90, Math.min(90, pointerAngle));
+      targetAngle = currentAngle + targetOffset;
+      drawTarget();
+    });
+
+    control.addEventListener('pointerup', async (event) => {
+      if (!dragging) return;
+      dragging = false;
+      control.releasePointerCapture(event.pointerId);
+      await fetch(`/api/target?angle=${encodeURIComponent(targetAngle)}`);
+    });
+
+    async function refresh() {
+      try {
+        const response = await fetch('/api/steering', { cache: 'no-store' });
+        const data = await response.json();
+        currentAngle = data.angle;
+        if (targetAngle === null) {
+          targetAngle = currentAngle;
+        }
+        angle.textContent = `${data.angle.toFixed(4)}°`;
+        arrow.style.transform = `rotate(${data.angle}deg)`;
+        drawTarget();
+      } catch (_) {}
+    }
+    refresh();
+    setInterval(refresh, 100);
+  </script>
+</body>
+</html>
+)rawliteral";
+
+void serveIndex() {
+  server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+}
+
+void serveSteering() {
+  if (activeDashboard == nullptr) {
+    server.send(503, "application/json", "{\"error\":\"unavailable\"}");
+    return;
+  }
+
+  String response = "{\"angle\":" +
+                    String(activeDashboard->steeringAngleDegrees(), 4) + "}";
+  server.send(200, "application/json", response);
+}
+}  // namespace
+
+void WebDashboard::begin(uint16_t port) {
+  (void)port;
+  activeDashboard = this;
+  server.on("/", HTTP_GET, serveIndex);
+  server.on("/api/steering", HTTP_GET, serveSteering);
+  server.on("/api/target", HTTP_GET, [this]() {
+    if (!server.hasArg("angle")) {
+      server.send(400, "application/json", "{\"error\":\"angle required\"}");
+      return;
+    }
+
+    targetAngleDegrees_ = server.arg("angle").toFloat();
+    targetRequested_ = true;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/throttle", HTTP_GET, [this]() {
+    if (!server.hasArg("percent")) {
+      server.send(400, "application/json", "{\"error\":\"percent required\"}");
+      return;
+    }
+
+    throttlePercent_ = constrain(server.arg("percent").toInt(), -100, 100);
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.begin();
+}
+
+void WebDashboard::handleClient() {
+  server.handleClient();
+}
+
+void WebDashboard::setSteeringAngle(float angleDegrees) {
+  steeringAngleDegrees_ = angleDegrees;
+}
