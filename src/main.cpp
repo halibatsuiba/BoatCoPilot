@@ -82,7 +82,8 @@ void loop() {
   }
   gpsSensor.update();
   webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
-                          gpsSensor.latitude(), gpsSensor.longitude());
+                          gpsSensor.latitude(), gpsSensor.longitude(),
+                          gpsSensor.speedKnots());
 
   if (headingSensor.update()) {
     webDashboard.setHeading(headingSensor.headingDegrees());

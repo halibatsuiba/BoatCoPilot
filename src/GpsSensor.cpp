@@ -28,3 +28,7 @@ double GpsSensor::latitude() {
 double GpsSensor::longitude() {
   return gps_.location.isValid() ? gps_.location.lng() : 0.0;
 }
+
+double GpsSensor::speedKnots() {
+  return gps_.speed.isValid() ? gps_.speed.knots() : 0.0;
+}

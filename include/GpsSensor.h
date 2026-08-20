@@ -14,6 +14,7 @@ class GpsSensor {
   uint32_t satellites();
   double latitude();
   double longitude();
+  double speedKnots();
 
  private:
   static constexpr uint32_t FIX_TIMEOUT_MS = 5000;

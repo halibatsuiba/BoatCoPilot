@@ -233,6 +233,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
       <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
       <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
+      <div class="readout"><span class="label">Speed</span><strong id="speed">0.0 kn</strong></div>
       <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
       <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
     </section>
@@ -260,6 +261,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </section>
       <div class="readout"><span class="label">Compass heading</span><strong id="bearing-heading">0°</strong></div>
       <div class="readout"><span class="label">Locked bearing</span><strong id="bearing-target">0°</strong></div>
+      <div class="readout"><span class="label">Speed</span><strong id="bearing-speed">0.0 kn</strong></div>
       <div class="readout"><span class="label">Autopilot</span><strong id="bearing-status">UNLOCKED</strong></div>
       <div class="bearing-buttons">
         <button id="bearing-unlock" class="unlock-button" type="button">UNLOCK</button>
@@ -287,6 +289,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const satellites = document.getElementById('satellites');
     const latitude = document.getElementById('latitude');
     const longitude = document.getElementById('longitude');
+    const speed = document.getElementById('speed');
+    const bearingSpeed = document.getElementById('bearing-speed');
     const throttle = document.getElementById('throttle');
     const throttleValue = document.getElementById('throttle-value');
     const pageSteeringBtn = document.getElementById('page-steering-btn');
@@ -428,6 +432,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         satellites.textContent = data.satellites;
         latitude.textContent = data.latitude === null ? '--' : data.latitude.toFixed(6);
         longitude.textContent = data.longitude === null ? '--' : data.longitude.toFixed(6);
+        speed.textContent = `${data.speedKnots.toFixed(1)} kn`;
+        bearingSpeed.textContent = `${data.speedKnots.toFixed(1)} kn`;
         arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
         bearingHeading.textContent = `${roundedAngle(data.heading)}°`;
@@ -481,6 +487,7 @@ void serveSteering() {
   } else {
     response += "null";
   }
+  response += ",\"speedKnots\":" + String(activeDashboard->gpsSpeedKnots(), 2);
   response += "}";
   server.send(200, "application/json", response);
 }
@@ -563,9 +570,10 @@ void WebDashboard::setHeading(float headingDegrees) {
 }
 
 void WebDashboard::setGpsData(bool hasFix, uint32_t satellites, double latitude,
-                              double longitude) {
+                              double longitude, double speedKnots) {
   gpsHasFix_ = hasFix;
   gpsSatellites_ = satellites;
   gpsLatitude_ = latitude;
   gpsLongitude_ = longitude;
+  gpsSpeedKnots_ = speedKnots;
 }
