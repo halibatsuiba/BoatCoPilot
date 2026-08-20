@@ -1,11 +1,22 @@
 #include "WebDashboard.h"
 
 #include "Config.h"
+#include <LittleFS.h>
 #include <WebServer.h>
 
 namespace {
 WebServer server(80);
 WebDashboard* activeDashboard = nullptr;
+
+void serveDepthContours() {
+  File file = LittleFS.open("/tuusulanjarvi.geojson", "r");
+  if (!file) {
+    server.send(404, "application/json", "{\"error\":\"not found\"}");
+    return;
+  }
+  server.streamFile(file, "application/geo+json");
+  file.close();
+}
 
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -368,6 +379,33 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         setWaypointMarker(lat, lng);
         await fetch(`/api/waypoint?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`);
       });
+      loadDepthContours();
+    }
+
+    function depthColor(depth) {
+      if (depth <= 0) return '#f1c84b';
+      if (depth <= 1.5) return '#54e38e';
+      if (depth <= 3) return '#2fb3c7';
+      return '#1a5ea8';
+    }
+
+    async function loadDepthContours() {
+      try {
+        const response = await fetch('/api/depth-contours', { cache: 'no-store' });
+        if (!response.ok) {
+          console.error('Depth contours request failed', response.status);
+          return;
+        }
+        const geojson = await response.json();
+        L.geoJSON(geojson, {
+          style: (feature) => ({ color: depthColor(feature.properties.depth), weight: 2 }),
+          onEachFeature: (feature, layer) => {
+            layer.bindTooltip(`${feature.properties.depth} m`, { sticky: true });
+          }
+        }).addTo(map);
+      } catch (error) {
+        console.error('Depth contours request error', error);
+      }
     }
 
     function setWaypointMarker(lat, lon) {
@@ -588,8 +626,14 @@ void serveSteering() {
 void WebDashboard::begin(uint16_t port) {
   (void)port;
   activeDashboard = this;
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed; depth contours unavailable");
+  } else if (!LittleFS.exists("/tuusulanjarvi.geojson")) {
+    Serial.println("tuusulanjarvi.geojson not found on LittleFS; run 'pio run -t uploadfs'");
+  }
   server.on("/", HTTP_GET, serveIndex);
   server.on("/api/steering", HTTP_GET, serveSteering);
+  server.on("/api/depth-contours", HTTP_GET, serveDepthContours);
   server.on("/api/target", HTTP_GET, [this]() {
     if (!server.hasArg("angle")) {
       server.send(400, "application/json", "{\"error\":\"angle required\"}");
