@@ -105,13 +105,6 @@ void loop() {
       steeringMotor.stop();
     }
 
-    const uint32_t now = millis();
-    if (now - lastPrintTime >= STEERING_ANGLE_PRINT_INTERVAL_MS) {
-      Serial.print("Steering axle angle: ");
-      Serial.print(currentAngle, 0);
-      Serial.println(" deg");
-      lastPrintTime = now;
-    }
   } else {
     steeringMotor.stop();
     Serial.println("AS5600 read failed; check power, wiring, and I2C address");
