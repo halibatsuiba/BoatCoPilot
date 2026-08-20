@@ -23,6 +23,8 @@ class WebDashboard {
   bool targetRequested() const { return targetRequested_; }
   float targetAngleDegrees() const { return targetAngleDegrees_; }
   int throttlePercent() const { return throttlePercent_; }
+  bool bearingLockEnabled() const { return bearingLockEnabled_; }
+  float bearingLockTargetDegrees() const { return bearingLockTargetDegrees_; }
 
  private:
   float steeringAngleDegrees_ = 0.0f;
@@ -36,6 +38,8 @@ class WebDashboard {
   float targetAngleDegrees_ = 0.0f;
   bool targetRequested_ = false;
   int throttlePercent_ = 0;
+  float bearingLockTargetDegrees_ = 0.0f;
+  bool bearingLockEnabled_ = false;
 };
 
 #endif

@@ -17,6 +17,14 @@ constexpr uint32_t STEERING_ANGLE_PRINT_INTERVAL_MS = 50;
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr float STEERING_TARGET_TOLERANCE_DEGREES = 1.0f;
 
+float normalizeAngleDegrees(float angleDegrees) {
+  float normalized = fmodf(angleDegrees + 180.0f, 360.0f);
+  if (normalized < 0.0f) {
+    normalized += 360.0f;
+  }
+  return normalized - 180.0f;
+}
+
 AS5600Sensor steeringSensor;
 BNO085Sensor headingSensor;
 GpsSensor gpsSensor;
@@ -90,6 +98,22 @@ void loop() {
 
     if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
       steeringMotor.stop();
+    } else if (webDashboard.bearingLockEnabled()) {
+      const float headingError = normalizeAngleDegrees(
+          webDashboard.bearingLockTargetDegrees() - webDashboard.headingDegrees());
+      const float targetAngle =
+          constrain(headingError * BEARING_LOCK_STEERING_GAIN,
+                    -BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES,
+                    BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES);
+      const float angleError = targetAngle - currentAngle;
+
+      if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
+        steeringMotor.stop();
+      } else if (angleError > 0.0f) {
+        steeringMotor.runClockwise();
+      } else {
+        steeringMotor.runCounterClockwise();
+      }
     } else if (webDashboard.targetRequested()) {
       const float targetAngle = webDashboard.targetAngleDegrees();
       const float angleError = targetAngle - currentAngle;

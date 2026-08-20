@@ -81,6 +81,30 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       background: #14221e;
     }
     .zero-button:hover { background: #2d4b40; }
+    .pages { display: flex; gap: 10px; margin: 18px 0 0; }
+    .page-button {
+      flex: 1;
+      padding: 10px;
+      background: #14221e;
+    }
+    .page-button.active { color: var(--green); border-color: var(--green-dark); background: #1a2d26; }
+    .page { display: none; }
+    .page.active { display: block; }
+    #heading-arrow { transform-origin: 150px 150px; pointer-events: none; }
+    #bearing-arrow { transform-origin: 150px 150px; pointer-events: none; }
+    .heading-line { stroke: var(--green); stroke-width: 6; stroke-linecap: round; }
+    .heading-head { fill: var(--green); }
+    .bearing-line { stroke: #f1c84b; stroke-width: 9; stroke-linecap: round; }
+    .bearing-head { fill: #f1c84b; }
+    .compass-ring { fill: none; stroke: #2d4b40; stroke-width: 2; }
+    .compass-tick { stroke: #52675e; stroke-width: 2; }
+    .compass-label { fill: var(--muted); font: 700 14px monospace; text-anchor: middle; }
+    .bearing-buttons { display: flex; gap: 10px; margin-top: 4px; }
+    .lock-button, .unlock-button { flex: 1; padding: 11px; }
+    .lock-button { color: #14221e; background: var(--green); border-color: var(--green-dark); }
+    .lock-button:hover { background: #6cf0a1; }
+    .unlock-button { color: #fff1ef; background: #8f332f; border-color: #b34d47; }
+    .unlock-button:hover { background: #b34d47; }
     .stop-button {
       width: 100%;
       margin-top: 18px;
@@ -184,28 +208,63 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
   <main>
     <header><h1>Taktinen vetolaite</h1><span class="status">● online</span></header>
-    <section class="scene" aria-label="Boat steering direction">
-      <button id="zero" class="zero-button" type="button">ZERO</button>
-      <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
-        <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
-        <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
-        <path class="keel" d="M111 166 H189 V222 C179 247 164 261 150 267 C136 261 121 247 111 222Z"/>
-        <g id="arrow" aria-hidden="true">
-          <line class="arrow-line" x1="150" y1="222" x2="150" y2="93"/>
-          <path class="arrow-head" d="M150 57 L126 103 H174 Z"/>
-        </g>
-        <g id="target-arrow" aria-hidden="true">
-          <line class="target-line" x1="150" y1="222" x2="150" y2="108"/>
-          <path class="target-head" d="M150 78 L132 112 H168 Z"/>
-        </g>
-      </svg>
+    <nav class="pages">
+      <button id="page-steering-btn" class="page-button active" type="button">STEERING</button>
+      <button id="page-bearing-btn" class="page-button" type="button">BEARING LOCK</button>
+    </nav>
+    <section id="page-steering" class="page active">
+      <section class="scene" aria-label="Boat steering direction">
+        <button id="zero" class="zero-button" type="button">ZERO</button>
+        <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
+          <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
+          <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
+          <path class="keel" d="M111 166 H189 V222 C179 247 164 261 150 267 C136 261 121 247 111 222Z"/>
+          <g id="arrow" aria-hidden="true">
+            <line class="arrow-line" x1="150" y1="222" x2="150" y2="93"/>
+            <path class="arrow-head" d="M150 57 L126 103 H174 Z"/>
+          </g>
+          <g id="target-arrow" aria-hidden="true">
+            <line class="target-line" x1="150" y1="222" x2="150" y2="108"/>
+            <path class="target-head" d="M150 78 L132 112 H168 Z"/>
+          </g>
+        </svg>
+      </section>
+      <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
+      <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
+      <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
+      <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
+      <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
+      <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
     </section>
-    <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
-    <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
-    <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
-    <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
-    <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
-    <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
+    <section id="page-bearing" class="page">
+      <section class="scene" aria-label="Bearing lock compass">
+        <svg id="bearing-control" viewBox="0 0 300 300" role="img" aria-label="Compass with bearing lock control">
+          <circle class="compass-ring" cx="150" cy="150" r="128"/>
+          <line class="compass-tick" x1="150" y1="22" x2="150" y2="38"/>
+          <line class="compass-tick" x1="150" y1="262" x2="150" y2="278"/>
+          <line class="compass-tick" x1="22" y1="150" x2="38" y2="150"/>
+          <line class="compass-tick" x1="262" y1="150" x2="278" y2="150"/>
+          <text class="compass-label" x="150" y="56">N</text>
+          <text class="compass-label" x="150" y="256">S</text>
+          <text class="compass-label" x="250" y="156">E</text>
+          <text class="compass-label" x="50" y="156">W</text>
+          <g id="heading-arrow" aria-hidden="true">
+            <line class="heading-line" x1="150" y1="150" x2="150" y2="70"/>
+            <path class="heading-head" d="M150 46 L134 78 H166 Z"/>
+          </g>
+          <g id="bearing-arrow" aria-hidden="true">
+            <line class="bearing-line" x1="150" y1="150" x2="150" y2="48"/>
+            <path class="bearing-head" d="M150 18 L128 58 H172 Z"/>
+          </g>
+        </svg>
+      </section>
+      <div class="readout"><span class="label">Compass heading</span><strong id="bearing-heading">0°</strong></div>
+      <div class="readout"><span class="label">Locked bearing</span><strong id="bearing-target">0°</strong></div>
+      <div class="readout"><span class="label">Autopilot</span><strong id="bearing-status">UNLOCKED</strong></div>
+      <div class="bearing-buttons">
+        <button id="bearing-unlock" class="unlock-button" type="button">UNLOCK</button>
+      </div>
+    </section>
     <button id="stop" class="stop-button" type="button">STOP</button>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
@@ -230,9 +289,73 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const longitude = document.getElementById('longitude');
     const throttle = document.getElementById('throttle');
     const throttleValue = document.getElementById('throttle-value');
+    const pageSteeringBtn = document.getElementById('page-steering-btn');
+    const pageBearingBtn = document.getElementById('page-bearing-btn');
+    const pageSteering = document.getElementById('page-steering');
+    const pageBearing = document.getElementById('page-bearing');
+    const bearingControl = document.getElementById('bearing-control');
+    const headingArrow = document.getElementById('heading-arrow');
+    const bearingArrow = document.getElementById('bearing-arrow');
+    const bearingHeading = document.getElementById('bearing-heading');
+    const bearingTargetLabel = document.getElementById('bearing-target');
+    const bearingStatus = document.getElementById('bearing-status');
+    const bearingUnlock = document.getElementById('bearing-unlock');
     let currentAngle = 0;
     let targetAngle = null;
     let dragging = false;
+    let bearingDragging = false;
+    let bearingTarget = 0;
+    let bearingLocked = false;
+
+    function showPage(name) {
+      const steeringActive = name === 'steering';
+      pageSteering.classList.toggle('active', steeringActive);
+      pageBearing.classList.toggle('active', !steeringActive);
+      pageSteeringBtn.classList.toggle('active', steeringActive);
+      pageBearingBtn.classList.toggle('active', !steeringActive);
+    }
+
+    pageSteeringBtn.addEventListener('click', () => showPage('steering'));
+    pageBearingBtn.addEventListener('click', () => showPage('bearing'));
+
+    function normalizeBearing(value) {
+      return ((value % 360) + 360) % 360;
+    }
+
+    function drawBearing() {
+      bearingArrow.style.transform = `rotate(${roundedAngle(bearingTarget)}deg)`;
+      bearingTargetLabel.textContent = `${roundedAngle(bearingTarget)}°`;
+      bearingStatus.textContent = bearingLocked ? 'LOCKED' : 'UNLOCKED';
+    }
+
+    bearingControl.addEventListener('pointerdown', (event) => {
+      bearingDragging = true;
+      bearingControl.setPointerCapture(event.pointerId);
+    });
+
+    bearingControl.addEventListener('pointermove', (event) => {
+      if (!bearingDragging) return;
+      const bounds = bearingControl.getBoundingClientRect();
+      const x = event.clientX - (bounds.left + bounds.width / 2);
+      const y = event.clientY - (bounds.top + bounds.height / 2);
+      bearingTarget = normalizeBearing(Math.atan2(x, -y) * 180 / Math.PI);
+      drawBearing();
+    });
+
+    bearingControl.addEventListener('pointerup', async (event) => {
+      if (!bearingDragging) return;
+      bearingDragging = false;
+      bearingControl.releasePointerCapture(event.pointerId);
+      bearingLocked = true;
+      drawBearing();
+      await fetch(`/api/bearing?angle=${encodeURIComponent(bearingTarget)}`);
+    });
+
+    bearingUnlock.addEventListener('click', async () => {
+      bearingLocked = false;
+      drawBearing();
+      await fetch('/api/bearing/disable');
+    });
 
     function showThrottle(value) {
       throttle.value = value;
@@ -307,6 +430,13 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         longitude.textContent = data.longitude === null ? '--' : data.longitude.toFixed(6);
         arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
+        bearingHeading.textContent = `${roundedAngle(data.heading)}°`;
+        headingArrow.style.transform = `rotate(${roundedAngle(data.heading)}deg)`;
+        bearingLocked = data.bearingLocked;
+        if (!bearingDragging) {
+          bearingTarget = data.bearingTarget;
+        }
+        drawBearing();
       } catch (_) {}
     }
     refresh();
@@ -335,6 +465,10 @@ void serveSteering() {
                     (activeDashboard->gpsHasFix() ? "FIX" : "NO FIX") +
                     "\",\"satellites\":" +
                     String(activeDashboard->gpsSatellites()) +
+                    ",\"bearingLocked\":" +
+                    (activeDashboard->bearingLockEnabled() ? "true" : "false") +
+                    ",\"bearingTarget\":" +
+                    String(activeDashboard->bearingLockTargetDegrees(), 4) +
                     ",\"latitude\":";
   if (activeDashboard->gpsHasFix()) {
     response += String(activeDashboard->gpsLatitude(), 6);
@@ -365,7 +499,28 @@ void WebDashboard::begin(uint16_t port) {
 
     targetAngleDegrees_ = server.arg("angle").toFloat();
     targetRequested_ = true;
+    bearingLockEnabled_ = false;
     stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/bearing", HTTP_GET, [this]() {
+    if (!server.hasArg("angle")) {
+      server.send(400, "application/json", "{\"error\":\"angle required\"}");
+      return;
+    }
+
+    float angle = fmodf(server.arg("angle").toFloat(), 360.0f);
+    if (angle < 0.0f) {
+      angle += 360.0f;
+    }
+    bearingLockTargetDegrees_ = angle;
+    bearingLockEnabled_ = true;
+    targetRequested_ = false;
+    stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/bearing/disable", HTTP_GET, [this]() {
+    bearingLockEnabled_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/throttle", HTTP_GET, [this]() {

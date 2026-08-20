@@ -77,6 +77,14 @@ constexpr int CONTROL_MAX = 255;
 constexpr int MOTOR_DEADBAND = 10;
 
 //==================================================
+// Bearing lock (autopilot)
+//==================================================
+
+// Steering axle degrees commanded per degree of heading error
+constexpr float BEARING_LOCK_STEERING_GAIN = 1.0f;
+constexpr float BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES = 30.0f;
+
+//==================================================
 // Safety
 //==================================================
 
