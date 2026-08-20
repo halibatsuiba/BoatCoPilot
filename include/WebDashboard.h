@@ -13,6 +13,7 @@ class WebDashboard {
                   double longitude);
   void recordClientHeartbeat();
   bool stopRequested() const { return stopRequested_; }
+  bool hasConnectedClient() const { return lastClientHeartbeatMs_ != 0; }
   bool webClientConnected() const;
   float steeringAngleDegrees() const { return steeringAngleDegrees_; }
   float headingDegrees() const { return headingDegrees_; }

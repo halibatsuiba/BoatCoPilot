@@ -8,6 +8,7 @@
 #include "CytronMotor.h"
 #include "EscThrottle.h"
 #include "GpsSensor.h"
+#include "OledDisplay.h"
 #include "WiFiConnection.h"
 #include "WebDashboard.h"
 
@@ -23,20 +24,50 @@ GpsSensor gpsSensor;
 CytronMotor steeringMotor;
 EscThrottle throttle;
 WiFiConnection wifiConnection;
+OledDisplay oledDisplay;
 WebDashboard webDashboard;
+
+void updateOledStatus() {
+  static const char* lastStatus = nullptr;
+  const char* status = "Ready";
+
+  if (WiFi.status() != WL_CONNECTED) {
+    status = "Disconnected";
+  } else if (!webDashboard.hasConnectedClient()) {
+    status = "Ready";
+  } else if (!webDashboard.webClientConnected()) {
+    status = "Timeout";
+  } else {
+    status = "Connected";
+  }
+
+  if (status != lastStatus) {
+    oledDisplay.showStatus(status);
+    lastStatus = status;
+  }
+}
 }  // namespace
 
 void setup() {
   Serial.begin(SERIAL_BAUDRATE);
+  if (oledDisplay.begin(OLED_SDA, OLED_SCL, OLED_ADDRESS)) {
+    oledDisplay.showMessage("Connecting to WiFi");
+  } else {
+    Serial.println("OLED display not found");
+  }
+
   Serial.println("Connecting to WiFi");
   if (wifiConnection.connect(WIFI_SSID, WIFI_PASSWORD,
                              WIFI_CONNECT_TIMEOUT_MS)) {
     Serial.print("WiFi connected, IP address: ");
     Serial.println(WiFi.localIP());
+    oledDisplay.showIpAddress(WiFi.localIP());
     webDashboard.begin();
+    oledDisplay.showStatus("Ready");
     Serial.println("Web dashboard started on port 80");
   } else {
     Serial.println("WiFi connection failed");
+    oledDisplay.showMessage("WiFi connection failed");
   }
 
   steeringSensor.begin(AS5600_SDA_PIN, AS5600_SCL_PIN);
@@ -67,6 +98,7 @@ void loop() {
   static uint32_t lastPrintTime = 0;
 
   webDashboard.handleClient();
+  updateOledStatus();
   if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
     throttle.setPercent(0);
   } else {

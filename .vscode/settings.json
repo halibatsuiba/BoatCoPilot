@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^pio run$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

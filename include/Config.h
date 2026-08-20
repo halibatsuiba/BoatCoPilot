@@ -28,10 +28,6 @@ constexpr uint8_t OLED_HEIGHT = 64;
 constexpr uint8_t OLED_SDA = 21;
 constexpr uint8_t OLED_SCL = 22;
 
-//==================================================
-// Motor pins
-//==================================================
-
 //----------------------------------------------
 // Throttle RC ESC
 //----------------------------------------------
@@ -67,14 +63,14 @@ constexpr uint8_t STEERING_RPWM = 27;
 constexpr uint16_t PWM_FREQUENCY = 20000;
 constexpr uint8_t  PWM_RESOLUTION = 8;
 
-//==================================================
-// Control Limits
-//==================================================
+// //==================================================
+// // Control Limits
+// //==================================================
 
-constexpr int CONTROL_MIN = -255;
-constexpr int CONTROL_MAX = 255;
+// constexpr int CONTROL_MIN = -255;
+// constexpr int CONTROL_MAX = 255;
 
-constexpr int MOTOR_DEADBAND = 10;
+// constexpr int MOTOR_DEADBAND = 10;
 
 //==================================================
 // Safety
@@ -83,37 +79,21 @@ constexpr int MOTOR_DEADBAND = 10;
 constexpr uint32_t COMMAND_TIMEOUT_MS = 600000;   // 10 minutes
 constexpr uint32_t WEB_CLIENT_TIMEOUT_MS = 1000;
 
-//==================================================
-// Scheduler
-//==================================================
+// //==================================================
+// // Scheduler
+// //==================================================
 
-constexpr uint32_t MOTOR_TASK_MS     = 20;
-constexpr uint32_t FAILSAFE_TASK_MS  = 50;
-constexpr uint32_t TELEMETRY_TASK_MS = 100;
-constexpr uint32_t DISPLAY_TASK_MS   = 200;
-constexpr uint32_t NETWORK_TASK_MS   = 20;
+// constexpr uint32_t MOTOR_TASK_MS     = 20;
+// constexpr uint32_t FAILSAFE_TASK_MS  = 50;
+// constexpr uint32_t TELEMETRY_TASK_MS = 100;
+// constexpr uint32_t DISPLAY_TASK_MS   = 200;
+// constexpr uint32_t NETWORK_TASK_MS   = 20;
 
-//==================================================
-// Telemetry
-//==================================================
+// //==================================================
+// // Telemetry
+// //==================================================
 
-constexpr uint32_t TELEMETRY_INTERVAL_MS = 100;
-
-//==================================================
-// Battery
-//==================================================
-
-constexpr uint8_t BATTERY_ADC_PIN = 34;
-
-// Divider ratio:
-// Vbattery = ADC * BATTERY_DIVIDER
-
-constexpr float BATTERY_DIVIDER = 2.0f;
-
-// ADC calibration
-
-constexpr float ADC_REFERENCE = 3.30f;
-constexpr uint16_t ADC_MAX = 4095;
+// constexpr uint32_t TELEMETRY_INTERVAL_MS = 100;
 
 //==================================================
 
