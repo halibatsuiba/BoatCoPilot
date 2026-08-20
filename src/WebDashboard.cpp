@@ -14,6 +14,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Taktinen vetolaite</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     :root {
       color-scheme: dark;
@@ -105,6 +106,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .lock-button:hover { background: #6cf0a1; }
     .unlock-button { color: #fff1ef; background: #8f332f; border-color: #b34d47; }
     .unlock-button:hover { background: #b34d47; }
+    #map-container { height: 340px; border: 1px solid var(--line); }
+    #map-container .leaflet-container { background: var(--water); }
+    .boat-marker { color: var(--green); font-size: 26px; transform-origin: 50% 50%; text-shadow: 0 0 4px #000; }
+    .waypoint-buttons { display: flex; gap: 10px; margin-top: 4px; }
+    .cancel-button { flex: 1; padding: 11px; color: #fff1ef; background: #8f332f; border-color: #b34d47; }
+    .cancel-button:hover { background: #b34d47; }
     .stop-button {
       width: 100%;
       margin-top: 18px;
@@ -211,6 +218,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <nav class="pages">
       <button id="page-steering-btn" class="page-button active" type="button">STEERING</button>
       <button id="page-bearing-btn" class="page-button" type="button">BEARING LOCK</button>
+      <button id="page-map-btn" class="page-button" type="button">MAP</button>
     </nav>
     <section id="page-steering" class="page active">
       <section class="scene" aria-label="Boat steering direction">
@@ -267,6 +275,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <button id="bearing-unlock" class="unlock-button" type="button">UNLOCK</button>
       </div>
     </section>
+    <section id="page-map" class="page">
+      <div id="map-container" aria-label="Lake map, tap to set destination"></div>
+      <div class="readout"><span class="label">Navigation</span><strong id="nav-status">IDLE</strong></div>
+      <div class="readout"><span class="label">Distance to target</span><strong id="nav-distance">-- m</strong></div>
+      <div class="readout"><span class="label">Bearing to target</span><strong id="nav-bearing">--°</strong></div>
+      <div class="waypoint-buttons">
+        <button id="waypoint-cancel" class="cancel-button" type="button">CANCEL NAVIGATION</button>
+      </div>
+    </section>
     <button id="stop" class="stop-button" type="button">STOP</button>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
@@ -277,6 +294,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </section>
     <p class="note">Live AS5600 position · updates every 100 ms</p>
   </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const angle = document.getElementById('angle');
     const arrow = document.getElementById('arrow');
@@ -295,8 +313,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const throttleValue = document.getElementById('throttle-value');
     const pageSteeringBtn = document.getElementById('page-steering-btn');
     const pageBearingBtn = document.getElementById('page-bearing-btn');
+    const pageMapBtn = document.getElementById('page-map-btn');
     const pageSteering = document.getElementById('page-steering');
     const pageBearing = document.getElementById('page-bearing');
+    const pageMap = document.getElementById('page-map');
     const bearingControl = document.getElementById('bearing-control');
     const headingArrow = document.getElementById('heading-arrow');
     const bearingArrow = document.getElementById('bearing-arrow');
@@ -304,23 +324,67 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const bearingTargetLabel = document.getElementById('bearing-target');
     const bearingStatus = document.getElementById('bearing-status');
     const bearingUnlock = document.getElementById('bearing-unlock');
+    const navStatus = document.getElementById('nav-status');
+    const navDistance = document.getElementById('nav-distance');
+    const navBearing = document.getElementById('nav-bearing');
+    const waypointCancel = document.getElementById('waypoint-cancel');
     let currentAngle = 0;
     let targetAngle = null;
     let dragging = false;
     let bearingDragging = false;
     let bearingTarget = 0;
     let bearingLocked = false;
+    let boatMarker = null;
+    let waypointMarker = null;
+    let map = null;
+    let mapInitialized = false;
+    let hasCenteredMap = false;
 
     function showPage(name) {
-      const steeringActive = name === 'steering';
-      pageSteering.classList.toggle('active', steeringActive);
-      pageBearing.classList.toggle('active', !steeringActive);
-      pageSteeringBtn.classList.toggle('active', steeringActive);
-      pageBearingBtn.classList.toggle('active', !steeringActive);
+      pageSteering.classList.toggle('active', name === 'steering');
+      pageBearing.classList.toggle('active', name === 'bearing');
+      pageMap.classList.toggle('active', name === 'map');
+      pageSteeringBtn.classList.toggle('active', name === 'steering');
+      pageBearingBtn.classList.toggle('active', name === 'bearing');
+      pageMapBtn.classList.toggle('active', name === 'map');
+      if (name === 'map') {
+        initMap();
+        setTimeout(() => map && map.invalidateSize(), 50);
+      }
     }
 
+    function initMap() {
+      if (mapInitialized) return;
+      mapInitialized = true;
+      map = L.map('map-container').setView([0, 0], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      const boatIcon = L.divIcon({ className: '', html: '<div class="boat-marker">\u25B2</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+      boatMarker = L.marker([0, 0], { icon: boatIcon }).addTo(map);
+      map.on('click', async (event) => {
+        const { lat, lng } = event.latlng;
+        setWaypointMarker(lat, lng);
+        await fetch(`/api/waypoint?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`);
+      });
+    }
+
+    function setWaypointMarker(lat, lon) {
+      if (!map) return;
+      if (waypointMarker) {
+        waypointMarker.setLatLng([lat, lon]);
+      } else {
+        waypointMarker = L.marker([lat, lon]).addTo(map);
+      }
+    }
+
+    waypointCancel.addEventListener('click', async () => {
+      await fetch('/api/waypoint/disable');
+    });
     pageSteeringBtn.addEventListener('click', () => showPage('steering'));
     pageBearingBtn.addEventListener('click', () => showPage('bearing'));
+    pageMapBtn.addEventListener('click', () => showPage('map'));
 
     function normalizeBearing(value) {
       return ((value % 360) + 360) % 360;
@@ -443,6 +507,26 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           bearingTarget = data.bearingTarget;
         }
         drawBearing();
+
+        if (data.latitude !== null && data.longitude !== null && map) {
+          boatMarker.setLatLng([data.latitude, data.longitude]);
+          boatMarker.getElement().querySelector('.boat-marker').style.transform =
+            `rotate(${roundedAngle(data.heading)}deg)`;
+          if (!hasCenteredMap) {
+            hasCenteredMap = true;
+            map.setView([data.latitude, data.longitude], 16);
+          }
+        }
+        if (data.waypointActive) {
+          setWaypointMarker(data.waypointLat, data.waypointLon);
+          navStatus.textContent = data.waypointHolding ? 'HOLDING' : 'NAVIGATING';
+          navDistance.textContent = `${data.waypointDistance.toFixed(1)} m`;
+          navBearing.textContent = `${roundedAngle(data.waypointBearing)}°`;
+        } else {
+          navStatus.textContent = 'IDLE';
+          navDistance.textContent = '-- m';
+          navBearing.textContent = '--°';
+        }
       } catch (_) {}
     }
     refresh();
@@ -488,6 +572,14 @@ void serveSteering() {
     response += "null";
   }
   response += ",\"speedKnots\":" + String(activeDashboard->gpsSpeedKnots(), 2);
+  response += ",\"waypointActive\":" +
+              String(activeDashboard->waypointActive() ? "true" : "false") +
+              ",\"waypointHolding\":" +
+              (activeDashboard->waypointHolding() ? "true" : "false") +
+              ",\"waypointLat\":" + String(activeDashboard->waypointLatitude(), 6) +
+              ",\"waypointLon\":" + String(activeDashboard->waypointLongitude(), 6) +
+              ",\"waypointDistance\":" + String(activeDashboard->waypointDistanceMeters(), 1) +
+              ",\"waypointBearing\":" + String(activeDashboard->waypointBearingDegrees(), 1);
   response += "}";
   server.send(200, "application/json", response);
 }
@@ -507,6 +599,8 @@ void WebDashboard::begin(uint16_t port) {
     targetAngleDegrees_ = server.arg("angle").toFloat();
     targetRequested_ = true;
     bearingLockEnabled_ = false;
+    waypointActive_ = false;
+    waypointHolding_ = false;
     stopRequested_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
@@ -523,11 +617,33 @@ void WebDashboard::begin(uint16_t port) {
     bearingLockTargetDegrees_ = angle;
     bearingLockEnabled_ = true;
     targetRequested_ = false;
+    waypointActive_ = false;
+    waypointHolding_ = false;
     stopRequested_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/bearing/disable", HTTP_GET, [this]() {
     bearingLockEnabled_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/waypoint", HTTP_GET, [this]() {
+    if (!server.hasArg("lat") || !server.hasArg("lon")) {
+      server.send(400, "application/json", "{\"error\":\"lat and lon required\"}");
+      return;
+    }
+
+    waypointLatitude_ = server.arg("lat").toDouble();
+    waypointLongitude_ = server.arg("lon").toDouble();
+    waypointActive_ = true;
+    waypointHolding_ = false;
+    targetRequested_ = false;
+    bearingLockEnabled_ = false;
+    stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/waypoint/disable", HTTP_GET, [this]() {
+    waypointActive_ = false;
+    waypointHolding_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/throttle", HTTP_GET, [this]() {
@@ -555,6 +671,13 @@ void WebDashboard::handleClient() {
 bool WebDashboard::webClientConnected() const {
   return lastClientHeartbeatMs_ != 0 &&
          millis() - lastClientHeartbeatMs_ <= WEB_CLIENT_TIMEOUT_MS;
+}
+
+void WebDashboard::setWaypointTelemetry(bool holding, float distanceMeters,
+                                        float bearingDegrees) {
+  waypointHolding_ = holding;
+  waypointDistanceMeters_ = distanceMeters;
+  waypointBearingDegrees_ = bearingDegrees;
 }
 
 void WebDashboard::recordClientHeartbeat() {

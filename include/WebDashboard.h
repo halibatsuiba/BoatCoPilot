@@ -26,6 +26,13 @@ class WebDashboard {
   int throttlePercent() const { return throttlePercent_; }
   bool bearingLockEnabled() const { return bearingLockEnabled_; }
   float bearingLockTargetDegrees() const { return bearingLockTargetDegrees_; }
+  void setWaypointTelemetry(bool holding, float distanceMeters, float bearingDegrees);
+  bool waypointActive() const { return waypointActive_; }
+  bool waypointHolding() const { return waypointHolding_; }
+  double waypointLatitude() const { return waypointLatitude_; }
+  double waypointLongitude() const { return waypointLongitude_; }
+  float waypointDistanceMeters() const { return waypointDistanceMeters_; }
+  float waypointBearingDegrees() const { return waypointBearingDegrees_; }
 
  private:
   float steeringAngleDegrees_ = 0.0f;
@@ -42,6 +49,12 @@ class WebDashboard {
   int throttlePercent_ = 0;
   float bearingLockTargetDegrees_ = 0.0f;
   bool bearingLockEnabled_ = false;
+  double waypointLatitude_ = 0.0;
+  double waypointLongitude_ = 0.0;
+  bool waypointActive_ = false;
+  bool waypointHolding_ = false;
+  float waypointDistanceMeters_ = 0.0f;
+  float waypointBearingDegrees_ = 0.0f;
 };
 
 #endif

@@ -16,6 +16,7 @@ constexpr uint32_t SERIAL_BAUDRATE = 115200;
 constexpr uint32_t STEERING_ANGLE_PRINT_INTERVAL_MS = 50;
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr float STEERING_TARGET_TOLERANCE_DEGREES = 1.0f;
+constexpr double EARTH_RADIUS_METERS = 6371000.0;
 
 float normalizeAngleDegrees(float angleDegrees) {
   float normalized = fmodf(angleDegrees + 180.0f, 360.0f);
@@ -23,6 +24,29 @@ float normalizeAngleDegrees(float angleDegrees) {
     normalized += 360.0f;
   }
   return normalized - 180.0f;
+}
+
+// Great-circle bearing from (lat1, lon1) to (lat2, lon2), degrees clockwise from north
+float bearingToDegrees(double lat1, double lon1, double lat2, double lon2) {
+  const double phi1 = radians(lat1);
+  const double phi2 = radians(lat2);
+  const double deltaLon = radians(lon2 - lon1);
+  const double y = sin(deltaLon) * cos(phi2);
+  const double x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLon);
+  const double bearing = degrees(atan2(y, x));
+  return fmod(bearing + 360.0, 360.0);
+}
+
+// Haversine distance between two WGS84 coordinates, in meters
+double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  const double phi1 = radians(lat1);
+  const double phi2 = radians(lat2);
+  const double deltaPhi = radians(lat2 - lat1);
+  const double deltaLambda = radians(lon2 - lon1);
+  const double a = sin(deltaPhi / 2) * sin(deltaPhi / 2) +
+                    cos(phi1) * cos(phi2) * sin(deltaLambda / 2) * sin(deltaLambda / 2);
+  const double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  return EARTH_RADIUS_METERS * c;
 }
 
 AS5600Sensor steeringSensor;
@@ -73,17 +97,58 @@ void setup() {
 
 void loop() {
   static uint32_t lastPrintTime = 0;
+  static bool waypointHoldingState = false;
 
   webDashboard.handleClient();
-  if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
-    throttle.setPercent(0);
-  } else {
-    throttle.setPercent(webDashboard.throttlePercent());
-  }
   gpsSensor.update();
   webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
                           gpsSensor.latitude(), gpsSensor.longitude(),
                           gpsSensor.speedKnots());
+
+  const bool navigating = webDashboard.waypointActive() && gpsSensor.hasFix();
+  float navBearingDegrees = 0.0f;
+  int navThrottlePercent = 0;
+  if (navigating) {
+    const double distance =
+        distanceMeters(gpsSensor.latitude(), gpsSensor.longitude(),
+                       webDashboard.waypointLatitude(),
+                       webDashboard.waypointLongitude());
+    navBearingDegrees =
+        bearingToDegrees(gpsSensor.latitude(), gpsSensor.longitude(),
+                         webDashboard.waypointLatitude(),
+                         webDashboard.waypointLongitude());
+
+    if (!waypointHoldingState && distance <= WAYPOINT_ARRIVAL_RADIUS_METERS) {
+      waypointHoldingState = true;
+    } else if (waypointHoldingState && distance > WAYPOINT_HOLD_LEAVE_RADIUS_METERS) {
+      waypointHoldingState = false;
+    }
+    webDashboard.setWaypointTelemetry(waypointHoldingState, (float)distance,
+                                      navBearingDegrees);
+
+    if (waypointHoldingState) {
+      navThrottlePercent = (distance > WAYPOINT_HOLD_DEADBAND_METERS)
+                              ? WAYPOINT_HOLD_CORRECTION_THROTTLE_PERCENT
+                              : 0;
+    } else if (distance < WAYPOINT_SLOWDOWN_RADIUS_METERS) {
+      const float ratio = (float)distance / WAYPOINT_SLOWDOWN_RADIUS_METERS;
+      navThrottlePercent =
+          WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT +
+          (int)((WAYPOINT_CRUISE_THROTTLE_PERCENT - WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT) * ratio);
+    } else {
+      navThrottlePercent = WAYPOINT_CRUISE_THROTTLE_PERCENT;
+    }
+  } else {
+    waypointHoldingState = false;
+  }
+
+  if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
+    throttle.setPercent(0);
+  } else if (navigating) {
+    throttle.setPercent(navThrottlePercent);
+  } else {
+    throttle.setPercent(webDashboard.throttlePercent());
+  }
 
   if (headingSensor.update()) {
     webDashboard.setHeading(headingSensor.headingDegrees());
@@ -99,6 +164,22 @@ void loop() {
 
     if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
       steeringMotor.stop();
+    } else if (navigating) {
+      const float headingError =
+          normalizeAngleDegrees(navBearingDegrees - webDashboard.headingDegrees());
+      const float targetAngle =
+          constrain(headingError * BEARING_LOCK_STEERING_GAIN,
+                    -BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES,
+                    BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES);
+      const float angleError = targetAngle - currentAngle;
+
+      if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
+        steeringMotor.stop();
+      } else if (angleError > 0.0f) {
+        steeringMotor.runClockwise();
+      } else {
+        steeringMotor.runCounterClockwise();
+      }
     } else if (webDashboard.bearingLockEnabled()) {
       const float headingError = normalizeAngleDegrees(
           webDashboard.bearingLockTargetDegrees() - webDashboard.headingDegrees());

@@ -85,6 +85,22 @@ constexpr float BEARING_LOCK_STEERING_GAIN = 1.0f;
 constexpr float BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES = 30.0f;
 
 //==================================================
+// Waypoint navigation (go-to / station keeping)
+//==================================================
+
+// Distance at which the boat is considered "arrived" and switches to holding
+constexpr float WAYPOINT_ARRIVAL_RADIUS_METERS = 4.0f;
+// Must drift out this far while holding before resuming cruise navigation
+constexpr float WAYPOINT_HOLD_LEAVE_RADIUS_METERS = 8.0f;
+// No throttle correction while holding and within this distance of the waypoint
+constexpr float WAYPOINT_HOLD_DEADBAND_METERS = 2.0f;
+
+constexpr int WAYPOINT_CRUISE_THROTTLE_PERCENT = 45;
+constexpr int WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT = 20;
+constexpr float WAYPOINT_SLOWDOWN_RADIUS_METERS = 20.0f;
+constexpr int WAYPOINT_HOLD_CORRECTION_THROTTLE_PERCENT = 30;
+
+//==================================================
 // Safety
 //==================================================
 
