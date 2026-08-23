@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Adafruit_SSD1306.h>
 #include <Wire.h>
 #include <WiFi.h>
 
@@ -17,6 +18,9 @@ constexpr uint32_t STEERING_ANGLE_PRINT_INTERVAL_MS = 50;
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr float STEERING_TARGET_TOLERANCE_DEGREES = 1.0f;
 constexpr double EARTH_RADIUS_METERS = 6371000.0;
+
+Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
+bool oledReady = false;
 
 float normalizeAngleDegrees(float angleDegrees) {
   float normalized = fmodf(angleDegrees + 180.0f, 360.0f);
@@ -58,6 +62,37 @@ WiFiConnection wifiConnection;
 WebDashboard webDashboard;
 }  // namespace
 
+void updateOled() {
+  static uint32_t lastUpdateTime = 0;
+  if (!oledReady || millis() - lastUpdateTime < DISPLAY_TASK_MS) {
+    return;
+  }
+  lastUpdateTime = millis();
+
+  oled.clearDisplay();
+  oled.setCursor(0, 0);
+  oled.setTextSize(1);
+  oled.setTextColor(SSD1306_WHITE);
+  oled.print("GPS: ");
+  if (gpsSensor.hasFix()) {
+    oled.print(gpsSensor.satellites());
+    oled.println(" sats");
+    oled.print(gpsSensor.latitude(), 5);
+    oled.print(", ");
+    oled.println(gpsSensor.longitude(), 5);
+  } else {
+    oled.println("no fix");
+    oled.println("waiting...");
+  }
+  oled.print("HDG: ");
+  oled.print(headingSensor.headingDegrees(), 1);
+  oled.println(" deg");
+  oled.print("STEER: ");
+  oled.print(steeringSensor.steeringAngleDegrees(), 1);
+  oled.println(" deg");
+  oled.display();
+}
+
 void setup() {
   Serial.begin(SERIAL_BAUDRATE);
   Serial.println("Connecting to WiFi");
@@ -80,6 +115,19 @@ void setup() {
   }
   gpsSensor.begin(GPS_RX_PIN, GPS_TX_PIN, GPS_BAUDRATE);
   Serial.println("NEO-M8N GPS started");
+  oledReady = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS);
+  if (oledReady) {
+    oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setTextColor(SSD1306_WHITE);
+    oled.setCursor(0, 0);
+    oled.println("BoatCoPilot");
+    oled.println("Display ready");
+    oled.display();
+    Serial.println("OLED display started");
+  } else {
+    Serial.println("OLED display not found; check power, wiring, and I2C address");
+  }
   throttle.begin(THROTTLE_ESC_PIN, ESC_PWM_FREQUENCY, ESC_PWM_RESOLUTION,
                  ESC_REVERSE_US, ESC_NEUTRAL_US, ESC_FORWARD_US,
                  ESC_ARM_TIME_MS);
@@ -215,4 +263,6 @@ void loop() {
     steeringMotor.stop();
     Serial.println("AS5600 read failed; check power, wiring, and I2C address");
   }
+
+  updateOled();
 }

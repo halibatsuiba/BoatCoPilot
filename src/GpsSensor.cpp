@@ -9,7 +9,8 @@ bool GpsSensor::begin(uint8_t rxPin, uint8_t txPin, uint32_t baudRate) {
 
 void GpsSensor::update() {
   while (serial_.available() > 0) {
-    gps_.encode(serial_.read());
+    const int incomingByte = serial_.read();
+    gps_.encode(incomingByte);
   }
 }
 
