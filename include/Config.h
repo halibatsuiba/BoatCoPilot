@@ -49,6 +49,7 @@ constexpr uint8_t  ESC_PWM_RESOLUTION = 16;
 
 // Time to hold neutral during startup
 constexpr uint32_t ESC_ARM_TIME_MS = 3000;
+constexpr uint32_t ESC_DIRECTION_CHANGE_NEUTRAL_MS = 500;
 
 
 //----------------------------------------------

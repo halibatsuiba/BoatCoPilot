@@ -77,13 +77,13 @@ void updateOled() {
   if (gpsSensor.hasFix()) {
     oled.print(gpsSensor.satellites());
     oled.println(" sats");
-    oled.print(gpsSensor.latitude(), 5);
-    oled.print(", ");
-    oled.println(gpsSensor.longitude(), 5);
   } else {
     oled.println("no fix");
-    oled.println("waiting...");
   }
+  oled.print("WEB: ");
+  oled.println(webDashboard.webClientConnected() ? "CONNECTED" : "DISCONNECTED");
+  oled.print("IP: ");
+  oled.println(WiFi.localIP());
   oled.print("HDG: ");
   oled.print(headingSensor.headingDegrees(), 1);
   oled.println(" deg");

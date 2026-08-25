@@ -397,12 +397,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           return;
         }
         const geojson = await response.json();
-        L.geoJSON(geojson, {
+        const contourLayer = L.geoJSON(geojson, {
           style: (feature) => ({ color: depthColor(feature.properties.depth), weight: 2 }),
           onEachFeature: (feature, layer) => {
             layer.bindTooltip(`${feature.properties.depth} m`, { sticky: true });
           }
         }).addTo(map);
+        if (!hasCenteredMap && contourLayer.getBounds().isValid()) {
+          map.fitBounds(contourLayer.getBounds(), { padding: [12, 12] });
+        }
       } catch (error) {
         console.error('Depth contours request error', error);
       }
