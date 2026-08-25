@@ -190,13 +190,16 @@ void loop() {
     waypointHoldingState = false;
   }
 
+  int appliedThrottlePercent = 0;
   if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
-    throttle.setPercent(0);
+    appliedThrottlePercent = 0;
   } else if (navigating) {
-    throttle.setPercent(navThrottlePercent);
+    appliedThrottlePercent = navThrottlePercent;
   } else {
-    throttle.setPercent(webDashboard.throttlePercent());
+    appliedThrottlePercent = webDashboard.throttlePercent();
   }
+  throttle.setPercent(appliedThrottlePercent);
+  webDashboard.setAppliedThrottlePercent(appliedThrottlePercent);
 
   if (headingSensor.update()) {
     webDashboard.setHeading(headingSensor.headingDegrees());

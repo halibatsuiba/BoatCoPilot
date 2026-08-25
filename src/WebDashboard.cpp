@@ -563,6 +563,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           navStatus.textContent = data.waypointHolding ? 'HOLDING' : 'NAVIGATING';
           navDistance.textContent = `${data.waypointDistance.toFixed(1)} m`;
           navBearing.textContent = `${roundedAngle(data.waypointBearing)}°`;
+          showThrottle(data.throttle);
         } else {
           navStatus.textContent = 'IDLE';
           navDistance.textContent = '-- m';
@@ -620,7 +621,8 @@ void serveSteering() {
               ",\"waypointLat\":" + String(activeDashboard->waypointLatitude(), 6) +
               ",\"waypointLon\":" + String(activeDashboard->waypointLongitude(), 6) +
               ",\"waypointDistance\":" + String(activeDashboard->waypointDistanceMeters(), 1) +
-              ",\"waypointBearing\":" + String(activeDashboard->waypointBearingDegrees(), 1);
+              ",\"waypointBearing\":" + String(activeDashboard->waypointBearingDegrees(), 1) +
+              ",\"throttle\":" + String(activeDashboard->appliedThrottlePercent());
   response += "}";
   server.send(200, "application/json", response);
 }
