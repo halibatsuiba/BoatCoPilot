@@ -9,7 +9,8 @@ bool GpsSensor::begin(uint8_t rxPin, uint8_t txPin, uint32_t baudRate) {
 
 void GpsSensor::update() {
   while (serial_.available() > 0) {
-    gps_.encode(serial_.read());
+    const int incomingByte = serial_.read();
+    gps_.encode(incomingByte);
   }
 }
 
@@ -27,4 +28,8 @@ double GpsSensor::latitude() {
 
 double GpsSensor::longitude() {
   return gps_.location.isValid() ? gps_.location.lng() : 0.0;
+}
+
+double GpsSensor::speedKnots() {
+  return gps_.speed.isValid() ? gps_.speed.knots() : 0.0;
 }

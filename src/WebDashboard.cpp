@@ -1,11 +1,22 @@
 #include "WebDashboard.h"
 
 #include "Config.h"
+#include <LittleFS.h>
 #include <WebServer.h>
 
 namespace {
 WebServer server(80);
 WebDashboard* activeDashboard = nullptr;
+
+void serveDepthContours() {
+  File file = LittleFS.open("/tuusulanjarvi.geojson", "r");
+  if (!file) {
+    server.send(404, "application/json", "{\"error\":\"not found\"}");
+    return;
+  }
+  server.streamFile(file, "application/geo+json");
+  file.close();
+}
 
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -14,6 +25,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Taktinen vetolaite</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     :root {
       color-scheme: dark;
@@ -81,6 +93,36 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       background: #14221e;
     }
     .zero-button:hover { background: #2d4b40; }
+    .pages { display: flex; gap: 10px; margin: 18px 0 0; }
+    .page-button {
+      flex: 1;
+      padding: 10px;
+      background: #14221e;
+    }
+    .page-button.active { color: var(--green); border-color: var(--green-dark); background: #1a2d26; }
+    .page { display: none; }
+    .page.active { display: block; }
+    #heading-arrow { transform-origin: 150px 150px; pointer-events: none; }
+    #bearing-arrow { transform-origin: 150px 150px; pointer-events: none; }
+    .heading-line { stroke: var(--green); stroke-width: 6; stroke-linecap: round; }
+    .heading-head { fill: var(--green); }
+    .bearing-line { stroke: #f1c84b; stroke-width: 9; stroke-linecap: round; }
+    .bearing-head { fill: #f1c84b; }
+    .compass-ring { fill: none; stroke: #2d4b40; stroke-width: 2; }
+    .compass-tick { stroke: #52675e; stroke-width: 2; }
+    .compass-label { fill: var(--muted); font: 700 14px monospace; text-anchor: middle; }
+    .bearing-buttons { display: flex; gap: 10px; margin-top: 4px; }
+    .lock-button, .unlock-button { flex: 1; padding: 11px; }
+    .lock-button { color: #14221e; background: var(--green); border-color: var(--green-dark); }
+    .lock-button:hover { background: #6cf0a1; }
+    .unlock-button { color: #fff1ef; background: #8f332f; border-color: #b34d47; }
+    .unlock-button:hover { background: #b34d47; }
+    #map-container { height: 340px; border: 1px solid var(--line); }
+    #map-container .leaflet-container { background: var(--water); }
+    .boat-marker { color: var(--green); font-size: 26px; transform-origin: 50% 50%; text-shadow: 0 0 4px #000; }
+    .waypoint-buttons { display: flex; gap: 10px; margin-top: 4px; }
+    .cancel-button { flex: 1; padding: 11px; color: #fff1ef; background: #8f332f; border-color: #b34d47; }
+    .cancel-button:hover { background: #b34d47; }
     .stop-button {
       width: 100%;
       margin-top: 18px;
@@ -184,28 +226,75 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
   <main>
     <header><h1>Taktinen vetolaite</h1><span class="status">● online</span></header>
-    <section class="scene" aria-label="Boat steering direction">
-      <button id="zero" class="zero-button" type="button">ZERO</button>
-      <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
-        <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
-        <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
-        <path class="keel" d="M111 166 H189 V222 C179 247 164 261 150 267 C136 261 121 247 111 222Z"/>
-        <g id="arrow" aria-hidden="true">
-          <line class="arrow-line" x1="150" y1="222" x2="150" y2="93"/>
-          <path class="arrow-head" d="M150 57 L126 103 H174 Z"/>
-        </g>
-        <g id="target-arrow" aria-hidden="true">
-          <line class="target-line" x1="150" y1="222" x2="150" y2="108"/>
-          <path class="target-head" d="M150 78 L132 112 H168 Z"/>
-        </g>
-      </svg>
+    <nav class="pages">
+      <button id="page-steering-btn" class="page-button active" type="button">STEERING</button>
+      <button id="page-bearing-btn" class="page-button" type="button">BEARING LOCK</button>
+      <button id="page-map-btn" class="page-button" type="button">MAP</button>
+    </nav>
+    <section id="page-steering" class="page active">
+      <section class="scene" aria-label="Boat steering direction">
+        <button id="zero" class="zero-button" type="button">ZERO</button>
+        <svg id="steering-control" viewBox="0 0 300 300" role="img" aria-label="Top-down boat with steering control">
+          <path class="hull" d="M150 18 C205 50 238 122 226 199 C217 250 186 278 150 288 C114 278 83 250 74 199 C62 122 95 50 150 18Z"/>
+          <path class="deck" d="M150 48 C179 73 193 111 191 159 L109 159 C107 111 121 73 150 48Z"/>
+          <path class="keel" d="M111 166 H189 V222 C179 247 164 261 150 267 C136 261 121 247 111 222Z"/>
+          <g id="arrow" aria-hidden="true">
+            <line class="arrow-line" x1="150" y1="222" x2="150" y2="93"/>
+            <path class="arrow-head" d="M150 57 L126 103 H174 Z"/>
+          </g>
+          <g id="target-arrow" aria-hidden="true">
+            <line class="target-line" x1="150" y1="222" x2="150" y2="108"/>
+            <path class="target-head" d="M150 78 L132 112 H168 Z"/>
+          </g>
+        </svg>
+      </section>
+      <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
+      <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
+      <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
+      <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
+      <div class="readout"><span class="label">Speed</span><strong id="speed">0.0 kn</strong></div>
+      <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
+      <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
     </section>
-    <div class="readout"><span class="label">Steering axle angle</span><strong id="angle">0°</strong></div>
-    <div class="readout"><span class="label">Compass heading</span><strong id="heading">0°</strong></div>
-    <div class="readout"><span class="label">GPS status</span><strong id="gps-status">NO FIX</strong></div>
-    <div class="readout"><span class="label">Satellites</span><strong id="satellites">0</strong></div>
-    <div class="readout"><span class="label">Latitude</span><strong id="latitude">--</strong></div>
-    <div class="readout"><span class="label">Longitude</span><strong id="longitude">--</strong></div>
+    <section id="page-bearing" class="page">
+      <section class="scene" aria-label="Bearing lock compass">
+        <svg id="bearing-control" viewBox="0 0 300 300" role="img" aria-label="Compass with bearing lock control">
+          <circle class="compass-ring" cx="150" cy="150" r="128"/>
+          <line class="compass-tick" x1="150" y1="22" x2="150" y2="38"/>
+          <line class="compass-tick" x1="150" y1="262" x2="150" y2="278"/>
+          <line class="compass-tick" x1="22" y1="150" x2="38" y2="150"/>
+          <line class="compass-tick" x1="262" y1="150" x2="278" y2="150"/>
+          <text class="compass-label" x="150" y="56">N</text>
+          <text class="compass-label" x="150" y="256">S</text>
+          <text class="compass-label" x="250" y="156">E</text>
+          <text class="compass-label" x="50" y="156">W</text>
+          <g id="heading-arrow" aria-hidden="true">
+            <line class="heading-line" x1="150" y1="150" x2="150" y2="70"/>
+            <path class="heading-head" d="M150 46 L134 78 H166 Z"/>
+          </g>
+          <g id="bearing-arrow" aria-hidden="true">
+            <line class="bearing-line" x1="150" y1="150" x2="150" y2="48"/>
+            <path class="bearing-head" d="M150 18 L128 58 H172 Z"/>
+          </g>
+        </svg>
+      </section>
+      <div class="readout"><span class="label">Compass heading</span><strong id="bearing-heading">0°</strong></div>
+      <div class="readout"><span class="label">Locked bearing</span><strong id="bearing-target">0°</strong></div>
+      <div class="readout"><span class="label">Speed</span><strong id="bearing-speed">0.0 kn</strong></div>
+      <div class="readout"><span class="label">Autopilot</span><strong id="bearing-status">UNLOCKED</strong></div>
+      <div class="bearing-buttons">
+        <button id="bearing-unlock" class="unlock-button" type="button">UNLOCK</button>
+      </div>
+    </section>
+    <section id="page-map" class="page">
+      <div id="map-container" aria-label="Lake map, tap to set destination"></div>
+      <div class="readout"><span class="label">Navigation</span><strong id="nav-status">IDLE</strong></div>
+      <div class="readout"><span class="label">Distance to target</span><strong id="nav-distance">-- m</strong></div>
+      <div class="readout"><span class="label">Bearing to target</span><strong id="nav-bearing">--°</strong></div>
+      <div class="waypoint-buttons">
+        <button id="waypoint-cancel" class="cancel-button" type="button">CANCEL NAVIGATION</button>
+      </div>
+    </section>
     <button id="stop" class="stop-button" type="button">STOP</button>
     <section class="throttle">
       <div class="throttle-row"><span class="label">Throttle</span><strong id="throttle-value">0%</strong></div>
@@ -216,6 +305,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </section>
     <p class="note">Live AS5600 position · updates every 100 ms</p>
   </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const angle = document.getElementById('angle');
     const arrow = document.getElementById('arrow');
@@ -228,11 +318,153 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const satellites = document.getElementById('satellites');
     const latitude = document.getElementById('latitude');
     const longitude = document.getElementById('longitude');
+    const speed = document.getElementById('speed');
+    const bearingSpeed = document.getElementById('bearing-speed');
     const throttle = document.getElementById('throttle');
     const throttleValue = document.getElementById('throttle-value');
+    const pageSteeringBtn = document.getElementById('page-steering-btn');
+    const pageBearingBtn = document.getElementById('page-bearing-btn');
+    const pageMapBtn = document.getElementById('page-map-btn');
+    const pageSteering = document.getElementById('page-steering');
+    const pageBearing = document.getElementById('page-bearing');
+    const pageMap = document.getElementById('page-map');
+    const bearingControl = document.getElementById('bearing-control');
+    const headingArrow = document.getElementById('heading-arrow');
+    const bearingArrow = document.getElementById('bearing-arrow');
+    const bearingHeading = document.getElementById('bearing-heading');
+    const bearingTargetLabel = document.getElementById('bearing-target');
+    const bearingStatus = document.getElementById('bearing-status');
+    const bearingUnlock = document.getElementById('bearing-unlock');
+    const navStatus = document.getElementById('nav-status');
+    const navDistance = document.getElementById('nav-distance');
+    const navBearing = document.getElementById('nav-bearing');
+    const waypointCancel = document.getElementById('waypoint-cancel');
     let currentAngle = 0;
     let targetAngle = null;
     let dragging = false;
+    let bearingDragging = false;
+    let bearingTarget = 0;
+    let bearingLocked = false;
+    let boatMarker = null;
+    let waypointMarker = null;
+    let map = null;
+    let mapInitialized = false;
+    let hasCenteredMap = false;
+
+    function showPage(name) {
+      pageSteering.classList.toggle('active', name === 'steering');
+      pageBearing.classList.toggle('active', name === 'bearing');
+      pageMap.classList.toggle('active', name === 'map');
+      pageSteeringBtn.classList.toggle('active', name === 'steering');
+      pageBearingBtn.classList.toggle('active', name === 'bearing');
+      pageMapBtn.classList.toggle('active', name === 'map');
+      if (name === 'map') {
+        initMap();
+        setTimeout(() => map && map.invalidateSize(), 50);
+      }
+    }
+
+    function initMap() {
+      if (mapInitialized) return;
+      mapInitialized = true;
+      map = L.map('map-container').setView([0, 0], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      const boatIcon = L.divIcon({ className: '', html: '<div class="boat-marker">\u25B2</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+      boatMarker = L.marker([0, 0], { icon: boatIcon }).addTo(map);
+      map.on('click', async (event) => {
+        const { lat, lng } = event.latlng;
+        setWaypointMarker(lat, lng);
+        await fetch(`/api/waypoint?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`);
+      });
+      loadDepthContours();
+    }
+
+    function depthColor(depth) {
+      if (depth <= 0) return '#f1c84b';
+      if (depth <= 1.5) return '#54e38e';
+      if (depth <= 3) return '#2fb3c7';
+      return '#1a5ea8';
+    }
+
+    async function loadDepthContours() {
+      try {
+        const response = await fetch('/api/depth-contours', { cache: 'no-store' });
+        if (!response.ok) {
+          console.error('Depth contours request failed', response.status);
+          return;
+        }
+        const geojson = await response.json();
+        const contourLayer = L.geoJSON(geojson, {
+          style: (feature) => ({ color: depthColor(feature.properties.depth), weight: 2 }),
+          onEachFeature: (feature, layer) => {
+            layer.bindTooltip(`${feature.properties.depth} m`, { sticky: true });
+          }
+        }).addTo(map);
+        if (!hasCenteredMap && contourLayer.getBounds().isValid()) {
+          map.fitBounds(contourLayer.getBounds(), { padding: [12, 12] });
+        }
+      } catch (error) {
+        console.error('Depth contours request error', error);
+      }
+    }
+
+    function setWaypointMarker(lat, lon) {
+      if (!map) return;
+      if (waypointMarker) {
+        waypointMarker.setLatLng([lat, lon]);
+      } else {
+        waypointMarker = L.marker([lat, lon]).addTo(map);
+      }
+    }
+
+    waypointCancel.addEventListener('click', async () => {
+      await fetch('/api/waypoint/disable');
+    });
+    pageSteeringBtn.addEventListener('click', () => showPage('steering'));
+    pageBearingBtn.addEventListener('click', () => showPage('bearing'));
+    pageMapBtn.addEventListener('click', () => showPage('map'));
+
+    function normalizeBearing(value) {
+      return ((value % 360) + 360) % 360;
+    }
+
+    function drawBearing() {
+      bearingArrow.style.transform = `rotate(${roundedAngle(bearingTarget)}deg)`;
+      bearingTargetLabel.textContent = `${roundedAngle(bearingTarget)}°`;
+      bearingStatus.textContent = bearingLocked ? 'LOCKED' : 'UNLOCKED';
+    }
+
+    bearingControl.addEventListener('pointerdown', (event) => {
+      bearingDragging = true;
+      bearingControl.setPointerCapture(event.pointerId);
+    });
+
+    bearingControl.addEventListener('pointermove', (event) => {
+      if (!bearingDragging) return;
+      const bounds = bearingControl.getBoundingClientRect();
+      const x = event.clientX - (bounds.left + bounds.width / 2);
+      const y = event.clientY - (bounds.top + bounds.height / 2);
+      bearingTarget = normalizeBearing(Math.atan2(x, -y) * 180 / Math.PI);
+      drawBearing();
+    });
+
+    bearingControl.addEventListener('pointerup', async (event) => {
+      if (!bearingDragging) return;
+      bearingDragging = false;
+      bearingControl.releasePointerCapture(event.pointerId);
+      bearingLocked = true;
+      drawBearing();
+      await fetch(`/api/bearing?angle=${encodeURIComponent(bearingTarget)}`);
+    });
+
+    bearingUnlock.addEventListener('click', async () => {
+      bearingLocked = false;
+      drawBearing();
+      await fetch('/api/bearing/disable');
+    });
 
     function showThrottle(value) {
       throttle.value = value;
@@ -305,8 +537,38 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         satellites.textContent = data.satellites;
         latitude.textContent = data.latitude === null ? '--' : data.latitude.toFixed(6);
         longitude.textContent = data.longitude === null ? '--' : data.longitude.toFixed(6);
+        speed.textContent = `${data.speedKnots.toFixed(1)} kn`;
+        bearingSpeed.textContent = `${data.speedKnots.toFixed(1)} kn`;
         arrow.style.transform = `rotate(${roundedAngle(data.angle)}deg)`;
         drawTarget();
+        bearingHeading.textContent = `${roundedAngle(data.heading)}°`;
+        headingArrow.style.transform = `rotate(${roundedAngle(data.heading)}deg)`;
+        bearingLocked = data.bearingLocked;
+        if (!bearingDragging) {
+          bearingTarget = data.bearingTarget;
+        }
+        drawBearing();
+
+        if (data.latitude !== null && data.longitude !== null && map) {
+          boatMarker.setLatLng([data.latitude, data.longitude]);
+          boatMarker.getElement().querySelector('.boat-marker').style.transform =
+            `rotate(${roundedAngle(data.heading)}deg)`;
+          if (!hasCenteredMap) {
+            hasCenteredMap = true;
+            map.setView([data.latitude, data.longitude], 16);
+          }
+        }
+        if (data.waypointActive) {
+          setWaypointMarker(data.waypointLat, data.waypointLon);
+          navStatus.textContent = data.waypointHolding ? 'HOLDING' : 'NAVIGATING';
+          navDistance.textContent = `${data.waypointDistance.toFixed(1)} m`;
+          navBearing.textContent = `${roundedAngle(data.waypointBearing)}°`;
+          showThrottle(data.throttle);
+        } else {
+          navStatus.textContent = 'IDLE';
+          navDistance.textContent = '-- m';
+          navBearing.textContent = '--°';
+        }
       } catch (_) {}
     }
     refresh();
@@ -335,6 +597,10 @@ void serveSteering() {
                     (activeDashboard->gpsHasFix() ? "FIX" : "NO FIX") +
                     "\",\"satellites\":" +
                     String(activeDashboard->gpsSatellites()) +
+                    ",\"bearingLocked\":" +
+                    (activeDashboard->bearingLockEnabled() ? "true" : "false") +
+                    ",\"bearingTarget\":" +
+                    String(activeDashboard->bearingLockTargetDegrees(), 4) +
                     ",\"latitude\":";
   if (activeDashboard->gpsHasFix()) {
     response += String(activeDashboard->gpsLatitude(), 6);
@@ -347,6 +613,16 @@ void serveSteering() {
   } else {
     response += "null";
   }
+  response += ",\"speedKnots\":" + String(activeDashboard->gpsSpeedKnots(), 2);
+  response += ",\"waypointActive\":" +
+              String(activeDashboard->waypointActive() ? "true" : "false") +
+              ",\"waypointHolding\":" +
+              (activeDashboard->waypointHolding() ? "true" : "false") +
+              ",\"waypointLat\":" + String(activeDashboard->waypointLatitude(), 6) +
+              ",\"waypointLon\":" + String(activeDashboard->waypointLongitude(), 6) +
+              ",\"waypointDistance\":" + String(activeDashboard->waypointDistanceMeters(), 1) +
+              ",\"waypointBearing\":" + String(activeDashboard->waypointBearingDegrees(), 1) +
+              ",\"throttle\":" + String(activeDashboard->appliedThrottlePercent());
   response += "}";
   server.send(200, "application/json", response);
 }
@@ -355,8 +631,14 @@ void serveSteering() {
 void WebDashboard::begin(uint16_t port) {
   (void)port;
   activeDashboard = this;
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed; depth contours unavailable");
+  } else if (!LittleFS.exists("/tuusulanjarvi.geojson")) {
+    Serial.println("tuusulanjarvi.geojson not found on LittleFS; run 'pio run -t uploadfs'");
+  }
   server.on("/", HTTP_GET, serveIndex);
   server.on("/api/steering", HTTP_GET, serveSteering);
+  server.on("/api/depth-contours", HTTP_GET, serveDepthContours);
   server.on("/api/target", HTTP_GET, [this]() {
     if (!server.hasArg("angle")) {
       server.send(400, "application/json", "{\"error\":\"angle required\"}");
@@ -365,7 +647,52 @@ void WebDashboard::begin(uint16_t port) {
 
     targetAngleDegrees_ = server.arg("angle").toFloat();
     targetRequested_ = true;
+    bearingLockEnabled_ = false;
+    waypointActive_ = false;
+    waypointHolding_ = false;
     stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/bearing", HTTP_GET, [this]() {
+    if (!server.hasArg("angle")) {
+      server.send(400, "application/json", "{\"error\":\"angle required\"}");
+      return;
+    }
+
+    float angle = fmodf(server.arg("angle").toFloat(), 360.0f);
+    if (angle < 0.0f) {
+      angle += 360.0f;
+    }
+    bearingLockTargetDegrees_ = angle;
+    bearingLockEnabled_ = true;
+    targetRequested_ = false;
+    waypointActive_ = false;
+    waypointHolding_ = false;
+    stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/bearing/disable", HTTP_GET, [this]() {
+    bearingLockEnabled_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/waypoint", HTTP_GET, [this]() {
+    if (!server.hasArg("lat") || !server.hasArg("lon")) {
+      server.send(400, "application/json", "{\"error\":\"lat and lon required\"}");
+      return;
+    }
+
+    waypointLatitude_ = server.arg("lat").toDouble();
+    waypointLongitude_ = server.arg("lon").toDouble();
+    waypointActive_ = true;
+    waypointHolding_ = false;
+    targetRequested_ = false;
+    bearingLockEnabled_ = false;
+    stopRequested_ = false;
+    server.send(200, "application/json", "{\"ok\":true}");
+  });
+  server.on("/api/waypoint/disable", HTTP_GET, [this]() {
+    waypointActive_ = false;
+    waypointHolding_ = false;
     server.send(200, "application/json", "{\"ok\":true}");
   });
   server.on("/api/throttle", HTTP_GET, [this]() {
@@ -395,6 +722,13 @@ bool WebDashboard::webClientConnected() const {
          millis() - lastClientHeartbeatMs_ <= WEB_CLIENT_TIMEOUT_MS;
 }
 
+void WebDashboard::setWaypointTelemetry(bool holding, float distanceMeters,
+                                        float bearingDegrees) {
+  waypointHolding_ = holding;
+  waypointDistanceMeters_ = distanceMeters;
+  waypointBearingDegrees_ = bearingDegrees;
+}
+
 void WebDashboard::recordClientHeartbeat() {
   lastClientHeartbeatMs_ = millis();
 }
@@ -408,9 +742,10 @@ void WebDashboard::setHeading(float headingDegrees) {
 }
 
 void WebDashboard::setGpsData(bool hasFix, uint32_t satellites, double latitude,
-                              double longitude) {
+                              double longitude, double speedKnots) {
   gpsHasFix_ = hasFix;
   gpsSatellites_ = satellites;
   gpsLatitude_ = latitude;
   gpsLongitude_ = longitude;
+  gpsSpeedKnots_ = speedKnots;
 }

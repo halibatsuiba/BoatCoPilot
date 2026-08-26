@@ -1,5 +1,7 @@
 #include "EscThrottle.h"
 
+#include "Config.h"
+
 void EscThrottle::begin(uint8_t pin, uint32_t frequency, uint8_t resolution,
                         uint16_t reversePulseUs, uint16_t neutralPulseUs,
                         uint16_t forwardPulseUs, uint32_t armTimeMs) {
@@ -18,6 +20,26 @@ void EscThrottle::begin(uint8_t pin, uint32_t frequency, uint8_t resolution,
 void EscThrottle::setPercent(int percent) {
   percent_ = constrain(percent, -100, 100);
 
+  if (percent_ == 0) {
+    outputPercent_ = 0;
+    neutralUntilMs_ = 0;
+    writePulse(neutralPulseUs_);
+    return;
+  }
+
+  if (static_cast<int32_t>(millis() - neutralUntilMs_) < 0) {
+    return;
+  }
+
+  if (outputPercent_ != 0 &&
+      ((outputPercent_ < 0) != (percent_ < 0))) {
+    outputPercent_ = 0;
+    neutralUntilMs_ = millis() + ESC_DIRECTION_CHANGE_NEUTRAL_MS;
+    writePulse(neutralPulseUs_);
+    return;
+  }
+
+  outputPercent_ = percent_;
   if (percent_ < 0) {
     const uint16_t pulseWidth = map(percent_, -100, 0, reversePulseUs_,
                                     neutralPulseUs_);

@@ -21,6 +21,8 @@ class EscThrottle {
   uint16_t neutralPulseUs_ = 1500;
   uint16_t forwardPulseUs_ = 2000;
   int percent_ = 0;
+  int outputPercent_ = 0;
+  uint32_t neutralUntilMs_ = 0;
 };
 
 #endif
