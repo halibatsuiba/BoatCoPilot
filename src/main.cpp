@@ -9,6 +9,7 @@
 #include "CytronMotor.h"
 #include "EscThrottle.h"
 #include "GpsSensor.h"
+#include "OledDisplay.h"
 #include "WiFiConnection.h"
 #include "WebDashboard.h"
 
@@ -59,7 +60,28 @@ GpsSensor gpsSensor;
 CytronMotor steeringMotor;
 EscThrottle throttle;
 WiFiConnection wifiConnection;
+OledDisplay oledDisplay;
 WebDashboard webDashboard;
+
+void updateOledStatus() {
+  static const char* lastStatus = nullptr;
+  const char* status = "Ready";
+
+  if (WiFi.status() != WL_CONNECTED) {
+    status = "Disconnected";
+  } else if (!webDashboard.hasConnectedClient()) {
+    status = "Ready";
+  } else if (!webDashboard.webClientConnected()) {
+    status = "Timeout";
+  } else {
+    status = "Connected";
+  }
+
+  if (status != lastStatus) {
+    oledDisplay.showStatus(status);
+    lastStatus = status;
+  }
+}
 }  // namespace
 
 void updateOled() {
@@ -95,15 +117,24 @@ void updateOled() {
 
 void setup() {
   Serial.begin(SERIAL_BAUDRATE);
+  if (oledDisplay.begin(OLED_SDA, OLED_SCL, OLED_ADDRESS)) {
+    oledDisplay.showMessage("Connecting to WiFi");
+  } else {
+    Serial.println("OLED display not found");
+  }
+
   Serial.println("Connecting to WiFi");
   if (wifiConnection.connect(WIFI_SSID, WIFI_PASSWORD,
                              WIFI_CONNECT_TIMEOUT_MS)) {
     Serial.print("WiFi connected, IP address: ");
     Serial.println(WiFi.localIP());
+    oledDisplay.showIpAddress(WiFi.localIP());
     webDashboard.begin();
+    oledDisplay.showStatus("Ready");
     Serial.println("Web dashboard started on port 80");
   } else {
     Serial.println("WiFi connection failed");
+    oledDisplay.showMessage("WiFi connection failed");
   }
 
   steeringSensor.begin(AS5600_SDA_PIN, AS5600_SCL_PIN);
@@ -148,49 +179,7 @@ void loop() {
   static bool waypointHoldingState = false;
 
   webDashboard.handleClient();
-  gpsSensor.update();
-  webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
-                          gpsSensor.latitude(), gpsSensor.longitude(),
-                          gpsSensor.speedKnots());
-
-  const bool navigating = webDashboard.waypointActive() && gpsSensor.hasFix();
-  float navBearingDegrees = 0.0f;
-  int navThrottlePercent = 0;
-  if (navigating) {
-    const double distance =
-        distanceMeters(gpsSensor.latitude(), gpsSensor.longitude(),
-                       webDashboard.waypointLatitude(),
-                       webDashboard.waypointLongitude());
-    navBearingDegrees =
-        bearingToDegrees(gpsSensor.latitude(), gpsSensor.longitude(),
-                         webDashboard.waypointLatitude(),
-                         webDashboard.waypointLongitude());
-
-    if (!waypointHoldingState && distance <= WAYPOINT_ARRIVAL_RADIUS_METERS) {
-      waypointHoldingState = true;
-    } else if (waypointHoldingState && distance > WAYPOINT_HOLD_LEAVE_RADIUS_METERS) {
-      waypointHoldingState = false;
-    }
-    webDashboard.setWaypointTelemetry(waypointHoldingState, (float)distance,
-                                      navBearingDegrees);
-
-    if (waypointHoldingState) {
-      navThrottlePercent = (distance > WAYPOINT_HOLD_DEADBAND_METERS)
-                              ? WAYPOINT_HOLD_CORRECTION_THROTTLE_PERCENT
-                              : 0;
-    } else if (distance < WAYPOINT_SLOWDOWN_RADIUS_METERS) {
-      const float ratio = (float)distance / WAYPOINT_SLOWDOWN_RADIUS_METERS;
-      navThrottlePercent =
-          WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT +
-          (int)((WAYPOINT_CRUISE_THROTTLE_PERCENT - WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT) * ratio);
-    } else {
-      navThrottlePercent = WAYPOINT_CRUISE_THROTTLE_PERCENT;
-    }
-  } else {
-    waypointHoldingState = false;
-  }
-
-  int appliedThrottlePercent = 0;
+  updateOledStatus();
   if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
     appliedThrottlePercent = 0;
   } else if (navigating) {
