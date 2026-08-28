@@ -63,6 +63,20 @@ WiFiConnection wifiConnection;
 OledDisplay oledDisplay;
 WebDashboard webDashboard;
 
+// Drives the steering motor toward angleError == 0.
+// Positive angleError (target > current) must turn the wheel clockwise; the
+// motor wiring/gearing is reversed relative to the AS5600 reading, so the
+// commanded direction is inverted here to match physical motion.
+void driveSteeringTowardTarget(float angleError) {
+  if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
+    steeringMotor.stop();
+  } else if (angleError > 0.0f) {
+    steeringMotor.runCounterClockwise();
+  } else {
+    steeringMotor.runClockwise();
+  }
+}
+
 void updateOledStatus() {
   static const char* lastStatus = nullptr;
   const char* status = "Ready";
@@ -175,11 +189,58 @@ void setup() {
 }
 
 void loop() {
-  static uint32_t lastPrintTime = 0;
   static bool waypointHoldingState = false;
 
+  for (uint8_t sample = 0; sample < AS5600_SAMPLES_PER_LOOP; ++sample) {
+    steeringSensor.update();
+  }
   webDashboard.handleClient();
+  gpsSensor.update();
+  webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
+                          gpsSensor.latitude(), gpsSensor.longitude(),
+                          gpsSensor.speedKnots());
   updateOledStatus();
+
+  const bool navigating = webDashboard.waypointActive() && gpsSensor.hasFix();
+  float navBearingDegrees = 0.0f;
+  int navThrottlePercent = 0;
+  if (navigating) {
+    const double distance =
+        distanceMeters(gpsSensor.latitude(), gpsSensor.longitude(),
+                       webDashboard.waypointLatitude(),
+                       webDashboard.waypointLongitude());
+    navBearingDegrees =
+        bearingToDegrees(gpsSensor.latitude(), gpsSensor.longitude(),
+                         webDashboard.waypointLatitude(),
+                         webDashboard.waypointLongitude());
+
+    if (!waypointHoldingState && distance <= WAYPOINT_ARRIVAL_RADIUS_METERS) {
+      waypointHoldingState = true;
+    } else if (waypointHoldingState &&
+               distance > WAYPOINT_HOLD_LEAVE_RADIUS_METERS) {
+      waypointHoldingState = false;
+    }
+    webDashboard.setWaypointTelemetry(waypointHoldingState, (float)distance,
+                                      navBearingDegrees);
+
+    if (waypointHoldingState) {
+      navThrottlePercent = (distance > WAYPOINT_HOLD_DEADBAND_METERS)
+                               ? WAYPOINT_HOLD_CORRECTION_THROTTLE_PERCENT
+                               : 0;
+    } else if (distance < WAYPOINT_SLOWDOWN_RADIUS_METERS) {
+      const float ratio = (float)distance / WAYPOINT_SLOWDOWN_RADIUS_METERS;
+      navThrottlePercent =
+          WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT +
+          (int)((WAYPOINT_CRUISE_THROTTLE_PERCENT -
+                 WAYPOINT_MIN_APPROACH_THROTTLE_PERCENT) * ratio);
+    } else {
+      navThrottlePercent = WAYPOINT_CRUISE_THROTTLE_PERCENT;
+    }
+  } else {
+    waypointHoldingState = false;
+  }
+
+  int appliedThrottlePercent = 0;
   if (webDashboard.stopRequested() || !webDashboard.webClientConnected()) {
     appliedThrottlePercent = 0;
   } else if (navigating) {
@@ -198,7 +259,11 @@ void loop() {
     steeringMotor.stop();
   }
 
-  if (steeringSensor.update()) {
+  bool steeringSensorOk = false;
+  for (uint8_t sample = 0; sample < AS5600_SAMPLES_PER_LOOP; ++sample) {
+    steeringSensorOk = steeringSensor.update() || steeringSensorOk;
+  }
+  if (steeringSensorOk) {
     const float currentAngle = steeringSensor.steeringAngleDegrees();
     webDashboard.setSteeringAngle(currentAngle);
 
@@ -212,14 +277,7 @@ void loop() {
                     -BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES,
                     BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES);
       const float angleError = targetAngle - currentAngle;
-
-      if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
-        steeringMotor.stop();
-      } else if (angleError > 0.0f) {
-        steeringMotor.runClockwise();
-      } else {
-        steeringMotor.runCounterClockwise();
-      }
+      driveSteeringTowardTarget(angleError);
     } else if (webDashboard.bearingLockEnabled()) {
       const float headingError = normalizeAngleDegrees(
           webDashboard.bearingLockTargetDegrees() - webDashboard.headingDegrees());
@@ -228,25 +286,11 @@ void loop() {
                     -BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES,
                     BEARING_LOCK_MAX_STEERING_ANGLE_DEGREES);
       const float angleError = targetAngle - currentAngle;
-
-      if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
-        steeringMotor.stop();
-      } else if (angleError > 0.0f) {
-        steeringMotor.runClockwise();
-      } else {
-        steeringMotor.runCounterClockwise();
-      }
+      driveSteeringTowardTarget(angleError);
     } else if (webDashboard.targetRequested()) {
       const float targetAngle = webDashboard.targetAngleDegrees();
       const float angleError = targetAngle - currentAngle;
-
-      if (fabs(angleError) <= STEERING_TARGET_TOLERANCE_DEGREES) {
-        steeringMotor.stop();
-      } else if (angleError > 0.0f) {
-        steeringMotor.runClockwise();
-      } else {
-        steeringMotor.runCounterClockwise();
-      }
+      driveSteeringTowardTarget(angleError);
     } else {
       steeringMotor.stop();
     }

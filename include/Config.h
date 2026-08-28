@@ -104,21 +104,22 @@ constexpr int WAYPOINT_HOLD_CORRECTION_THROTTLE_PERCENT = 30;
 constexpr uint32_t COMMAND_TIMEOUT_MS = 600000;   // 10 minutes
 constexpr uint32_t WEB_CLIENT_TIMEOUT_MS = 1000;
 
-// //==================================================
-// // Scheduler
-// //==================================================
+//==================================================
+// Scheduler
+//==================================================
 
-// constexpr uint32_t MOTOR_TASK_MS     = 20;
-// constexpr uint32_t FAILSAFE_TASK_MS  = 50;
-// constexpr uint32_t TELEMETRY_TASK_MS = 100;
-// constexpr uint32_t DISPLAY_TASK_MS   = 200;
-// constexpr uint32_t NETWORK_TASK_MS   = 20;
+constexpr uint32_t MOTOR_TASK_MS     = 20;
+constexpr uint32_t FAILSAFE_TASK_MS  = 50;
+constexpr uint32_t TELEMETRY_TASK_MS = 100;
+constexpr uint32_t DISPLAY_TASK_MS   = 200;
+constexpr uint32_t NETWORK_TASK_MS   = 20;
+constexpr uint8_t AS5600_SAMPLES_PER_LOOP = 8;
 
-// //==================================================
-// // Telemetry
-// //==================================================
+//==================================================
+// Telemetry
+//==================================================
 
-// constexpr uint32_t TELEMETRY_INTERVAL_MS = 100;
+constexpr uint32_t TELEMETRY_INTERVAL_MS = 100;
 
 //==================================================
 
