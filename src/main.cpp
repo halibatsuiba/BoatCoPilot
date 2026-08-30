@@ -10,6 +10,7 @@
 #include "EscThrottle.h"
 #include "GpsSensor.h"
 #include "OledDisplay.h"
+#include "PiezoBuzzer.h"
 #include "WiFiConnection.h"
 #include "WebDashboard.h"
 
@@ -62,6 +63,7 @@ EscThrottle throttle;
 WiFiConnection wifiConnection;
 OledDisplay oledDisplay;
 WebDashboard webDashboard;
+PiezoBuzzer piezoBuzzer;
 
 // Drives the steering motor toward angleError == 0.
 // Positive angleError (target > current) must turn the wheel clockwise; the
@@ -186,14 +188,14 @@ void setup() {
   Serial.println(AS5600_SDA_PIN);
   Serial.print("I2C SCL: ");
   Serial.println(AS5600_SCL_PIN);
+
+  piezoBuzzer.begin(PIEZO_PIN);
+  piezoBuzzer.chirp(2);
 }
 
 void loop() {
   static bool waypointHoldingState = false;
 
-  for (uint8_t sample = 0; sample < AS5600_SAMPLES_PER_LOOP; ++sample) {
-    steeringSensor.update();
-  }
   webDashboard.handleClient();
   gpsSensor.update();
   webDashboard.setGpsData(gpsSensor.hasFix(), gpsSensor.satellites(),
@@ -300,5 +302,5 @@ void loop() {
     Serial.println("AS5600 read failed; check power, wiring, and I2C address");
   }
 
-  updateOled();
+  // updateOled();  // disabled temporarily to isolate AS5600 sampling rate
 }

@@ -16,10 +16,14 @@ class AS5600Sensor {
   static constexpr float MOTOR_TURNS_PER_STEERING_TURN = 360.0f;
 
   bool readRawAngle(uint16_t& rawAngle);
+  void reportSampleRate();
 
   uint16_t previousRawAngle_ = 0;
   float motorAngleDegrees_ = 0.0f;
   bool hasPreviousAngle_ = false;
+
+  uint32_t sampleCount_ = 0;
+  uint32_t lastRateReportMillis_ = 0;
 };
 
 #endif

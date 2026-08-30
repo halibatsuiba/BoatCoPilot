@@ -44,7 +44,29 @@ bool AS5600Sensor::update() {
   }
 
   previousRawAngle_ = rawAngle;
+
+  ++sampleCount_;
+  reportSampleRate();
+
   return true;
+}
+
+void AS5600Sensor::reportSampleRate() {
+  static constexpr uint32_t REPORT_INTERVAL_MS = 5000;
+
+  uint32_t now = millis();
+  if (now - lastRateReportMillis_ < REPORT_INTERVAL_MS) {
+    return;
+  }
+
+  if (lastRateReportMillis_ != 0) {
+    float elapsedSeconds = (now - lastRateReportMillis_) / 1000.0f;
+    float sampleRateHz = sampleCount_ / elapsedSeconds;
+    Serial.printf("AS5600 sample rate: %.1f Hz\n", sampleRateHz);
+  }
+
+  sampleCount_ = 0;
+  lastRateReportMillis_ = now;
 }
 
 float AS5600Sensor::steeringAngleDegrees() const {
